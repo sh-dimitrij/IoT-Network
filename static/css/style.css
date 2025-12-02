@@ -1,0 +1,50 @@
+/* static/css/style.css */
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    margin-bottom: 1rem;
+    border: none;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.btn {
+    border-radius: 0.25rem;
+}
+
+.table th {
+    border-top: none;
+}
+
+.alert {
+    border-radius: 0.25rem;
+    border: none;
+}
+
+.badge {
+    font-weight: normal;
+}
+
+.modal-content {
+    border-radius: 0.5rem;
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.card {
+    animation: fadeIn 0.3s ease-in;
+}

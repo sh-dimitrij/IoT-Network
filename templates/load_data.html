@@ -1,0 +1,98 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>📥 Загрузка данных IoT</h2>
+        <p class="text-muted">Загрузите данные об устройствах и их связях</p>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('network_details', network_id=network_info.network.id) }}" 
+           class="btn btn-secondary">
+            ← Назад к сети
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>Загрузка данных в сеть: {{ network_info.network.network_name }}</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="alert alert-info">
+                        <h6>Пример загружаемых данных:</h6>
+                        <p>Система загрузит тестовые данные для демонстрации работы прецедента.</p>
+                        <ul>
+                            <li>6 IoT устройств разных типов</li>
+                            <li>8 связей между устройствами</li>
+                            <li>2 источника данных</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h5>Пример устройств:</h5>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Имя</th>
+                                        <th>Тип</th>
+                                        <th>Статус</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>101</td><td>Температурный датчик</td><td>sensor</td><td>active</td></tr>
+                                    <tr><td>102</td><td>Датчик влажности</td><td>sensor</td><td>active</td></tr>
+                                    <tr><td>103</td><td>Умный светильник</td><td>actuator</td><td>active</td></tr>
+                                    <tr><td>104</td><td>Кондиционер</td><td>actuator</td><td>active</td></tr>
+                                    <tr><td>105</td><td>Шлюз Zigbee</td><td>gateway</td><td>active</td></tr>
+                                    <tr><td>106</td><td>Датчик движения</td><td>sensor</td><td>inactive</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h5>Пример связей:</h5>
+                        <div class="alert alert-light">
+                            <code>
+                                (101→105), (102→105), (105→103), (105→104),<br>
+                                (101→104), (101→104) - дубликат, (103→104), (106→105)
+                            </code>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        📤 Загрузить тестовые данные
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Информация о сети</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Название:</strong> {{ network_info.network.network_name }}</p>
+                <p><strong>Устройств:</strong> {{ network_info.stats.total_devices }}</p>
+                <p><strong>Связей:</strong> {{ network_info.stats.total_connections }}</p>
+                <p><strong>Источников данных:</strong> {{ network_info.stats.total_data_sources }}</p>
+                <hr>
+                <h6>После загрузки:</h6>
+                <ul class="small">
+                    <li>Данные будут сохранены в БД через Row Data Gateway</li>
+                    <li>Связи будут проверены на валидность</li>
+                    <li>Созданные устройства можно будет анализировать</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>IoT сети</h2>
+        <p class="text-muted">Управление IoT сетями и их анализ</p>
+    </div>
+    <div class="col-auto">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createNetworkModal">
+            Создать новую сеть
+        </button>
+    </div>
+</div>
+
+{% if network_info %}
+    <!-- Детальная информация о конкретной сети -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4>Сеть: {{ network_info.network.network_name }}</h4>
+        </div>
+        <div class="card-body">
+            <p>{{ network_info.network.description or 'Нет описания' }}</p>
+            
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Устройства ({{ network_info.stats.total_devices }})</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if network_info.devices %}
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Имя</th>
+                                                <th>Тип</th>
+                                                <th>Статус</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for device in network_info.devices %}
+                                            <tr>
+                                                <td>{{ device.device_name }}</td>
+                                                <td><span class="badge bg-info">{{ device.type }}</span></td>
+                                                <td><span class="badge bg-{{ 'success' if device.status == 'active' else 'secondary' }}">{{ device.status }}</span></td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <p class="text-muted">Нет устройств</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Действия</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <a href="{{ url_for('load_data', network_id=network_info.network.id) }}" 
+                                   class="btn btn-primary">
+                                    📥 Загрузить данные IoT
+                                </a>
+                                <a href="{{ url_for('analyze_network', network_id=network_info.network.id) }}" 
+                                   class="btn btn-success">
+                                    🔍 Анализировать топологию
+                                </a>
+                            </div>
+                            
+                            {% if network_info.analyses %}
+                            <hr>
+                            <h6>Последние анализы:</h6>
+                            {% for analysis in network_info.analyses %}
+                            <div class="alert alert-light">
+                                <small>{{ analysis.date }} - Центральность: {{ analysis.centrality_score }}</small>
+                            </div>
+                            {% endfor %}
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Назад к списку сетей</a>
+
+{% else %}
+    <!-- Список всех сетей -->
+    {% if networks %}
+        <div class="row">
+            {% for network in networks %}
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ network.network_name }}</h5>
+                        <p class="card-text text-muted">{{ network.description or 'Нет описания' }}</p>
+                        <p class="card-text">
+                            <small class="text-muted">Создано: {{ network.created_at[:10] }}</small>
+                        </p>
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('network_details', network_id=network.id) }}" 
+                               class="btn btn-sm btn-outline-primary">
+                                Подробнее
+                            </a>
+                            <div>
+                                <a href="{{ url_for('load_data', network_id=network.id) }}" 
+                                   class="btn btn-sm btn-outline-success me-2">
+                                    Загрузить данные
+                                </a>
+                                <a href="{{ url_for('analyze_network', network_id=network.id) }}" 
+                                   class="btn btn-sm btn-outline-info">
+                                    Анализировать
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            У вас еще нет IoT сетей. Создайте первую сеть для начала работы.
+        </div>
+    {% endif %}
+{% endif %}
+
+<!-- Модальное окно создания сети -->
+<div class="modal fade" id="createNetworkModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать новую IoT сеть</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('create_network') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="network_name" class="form-label">Название сети *</label>
+                        <input type="text" class="form-control" id="network_name" name="network_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Описание</label>
+                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

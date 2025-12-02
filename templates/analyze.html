@@ -1,0 +1,245 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>🔍 Анализ топологии IoT сети</h2>
+        <p class="text-muted">Анализ структуры и связей на основе метаграфов</p>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('network_details', network_id=network_info.network.id) }}" 
+           class="btn btn-secondary">
+            ← Назад к сети
+        </a>
+    </div>
+</div>
+
+{% if not analysis_result %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>Анализ сети: {{ network_info.network.network_name }}</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <h6>Перед анализом убедитесь:</h6>
+                    <ul>
+                        <li>Данные устройств загружены в сеть</li>
+                        <li>Устройства имеют связи между собой</li>
+                        <li>Сеть содержит минимум 2 устройства</li>
+                    </ul>
+                </div>
+                
+                <h5>Текущее состояние сети:</h5>
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3>{{ network_info.stats.total_devices }}</h3>
+                                <p class="text-muted">Устройств</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3>{{ network_info.stats.total_connections }}</h3>
+                                <p class="text-muted">Связей</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3>{{ network_info.stats.total_data_sources }}</h3>
+                                <p class="text-muted">Источников</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3>{{ network_info.stats.total_analyses }}</h3>
+                                <p class="text-muted">Анализов</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <form method="POST">
+                    <button type="submit" class="btn btn-success btn-lg">
+                        🚀 Запустить анализ топологии
+                    </button>
+                    <p class="text-muted mt-2 small">
+                        Будут рассчитаны: центральность сети, изолированные узлы, избыточные связи
+                    </p>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Что анализируется?</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6>📊 Центральность сети</h6>
+                    <p class="small">Средняя степень центральности всех узлов сети (0-1)</p>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>🔗 Избыточные связи</h6>
+                    <p class="small">Дублирующиеся или симметричные связи между узлами</p>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>📍 Изолированные узлы</h6>
+                    <p class="small">Устройства без связей с другими устройствами сети</p>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>💡 Рекомендации</h6>
+                    <p class="small">Автоматические рекомендации по оптимизации сети</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- Результаты анализа -->
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h4>Результаты анализа</h4>
+            </div>
+            <div class="card-body">
+                <div class="row text-center mb-4">
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3>{{ "%.4f"|format(analysis_result.centrality_score) }}</h3>
+                                <p class="text-muted">Центральность</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3 class="{{ 'text-danger' if analysis_result.isolated_nodes_count > 0 else 'text-success' }}">
+                                    {{ analysis_result.isolated_nodes_count }}
+                                </h3>
+                                <p class="text-muted">Изолированных узлов</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3 class="{{ 'text-warning' if analysis_result.redundant_links_count > 0 else 'text-success' }}">
+                                    {{ analysis_result.redundant_links_count }}
+                                </h3>
+                                <p class="text-muted">Избыточных связей</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3 class="{{ 'text-danger' if analysis_result.total_issues > 0 else 'text-success' }}">
+                                    {{ analysis_result.total_issues }}
+                                </h3>
+                                <p class="text-muted">Всего проблем</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <p><strong>Дата анализа:</strong> {{ analysis_result.analysis_date }}</p>
+                <p><strong>Всего устройств в анализе:</strong> {{ analysis_result.total_devices }}</p>
+                
+                <hr>
+                
+                {% if analysis_result.isolated_nodes_count > 0 %}
+                <div class="mb-4">
+                    <h5>📍 Изолированные узлы:</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>ID устройства</th>
+                                    <th>Имя</th>
+                                    <th>Тип</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for node in analysis_result.isolated_nodes %}
+                                <tr>
+                                    <td>{{ node.id }}</td>
+                                    <td>{{ node.name }}</td>
+                                    <td><span class="badge bg-info">{{ node.type }}</span></td>
+                                    <td><span class="badge bg-{{ 'success' if node.status == 'active' else 'secondary' }}">{{ node.status }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if analysis_result.redundant_links_count > 0 %}
+                <div class="mb-4">
+                    <h5>🔗 Избыточные связи:</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Устройство 1</th>
+                                    <th>Устройство 2</th>
+                                    <th>Описание</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for link in analysis_result.redundant_links %}
+                                <tr>
+                                    <td>{{ link.device1_name }} (ID: {{ link.device1_id }})</td>
+                                    <td>{{ link.device2_name }} (ID: {{ link.device2_id }})</td>
+                                    <td><span class="badge bg-warning">Дублирующаяся связь</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div class="alert alert-info">
+                    <h5>💡 Рекомендации по оптимизации:</h5>
+                    <ul>
+                        {% for recommendation in analysis_result.recommendations %}
+                        <li>{{ recommendation }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('analyze_network', network_id=network_info.network.id) }}" 
+                       class="btn btn-primary">
+                        🔄 Повторить анализ
+                    </a>
+                    <a href="{{ url_for('network_details', network_id=network_info.network.id) }}" 
+                       class="btn btn-success">
+                        ✅ Вернуться к сети
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
