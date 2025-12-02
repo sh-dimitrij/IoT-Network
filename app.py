@@ -2,15 +2,15 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 from typing import List, Tuple
-import json
-from application import IoTNetworkService
-
+from application_service import IoTNetworkApplicationService
+import jinja2
+import dateutil.parser
 app = Flask(__name__)
 app.secret_key = 'iot-network-analysis-secret-key'
 app.config['SESSION_TYPE'] = 'filesystem'
 
 # Инициализация сервиса
-iot_service = IoTNetworkService()
+iot_service = IoTNetworkApplicationService()
 
 @app.route('/')
 def index():
@@ -28,10 +28,10 @@ def login():
     user = iot_service.authenticate_user(login, password)
     
     if user:
-        session['user_id'] = user['id']
-        session['user_name'] = user['name']
-        session['user_role'] = user['role']
-        flash(f'Добро пожаловать, {user["name"]}!', 'success')
+        session['user_id'] = user.id
+        session['user_name'] = user.name
+        session['user_role'] = user.role.value
+        flash(f'Добро пожаловать, {user.name}!', 'success')
         return redirect(url_for('dashboard'))
     else:
         flash('Неверный логин или пароль', 'error')
@@ -51,7 +51,7 @@ def dashboard():
         return redirect(url_for('index'))
     
     # Получить сети пользователя
-    networks = iot_service.get_all_networks(session['user_id'])
+    networks = iot_service.get_user_networks(session['user_id'])
     
     return render_template('network_info.html', 
                          networks=networks,
@@ -67,8 +67,12 @@ def create_network():
     description = request.form.get('description', '')
     
     if name:
-        iot_service.create_network(name, description, session['user_id'])
-        flash(f'Сеть "{name}" успешно создана', 'success')
+        result = iot_service.create_network(name, description, session['user_id'])
+        
+        if result['success']:
+            flash(f'Сеть "{name}" успешно создана', 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
     
     return redirect(url_for('dashboard'))
 
@@ -94,14 +98,11 @@ def load_data(network_id):
     if 'user_id' not in session:
         return redirect(url_for('index'))
     
+    network_info = iot_service.get_network_details(network_id)
+    
     if request.method == 'POST':
-        # Получение данных из формы
-        devices_data = []
-        connections_data = []
-        data_sources_data = []
-        
         try:
-            # Пример данных устройств (в реальном приложении будет загрузка файла)
+            # Пример данных устройств
             sample_devices = [
                 {'original_id': 101, 'name': 'Температурный датчик', 'type': 'sensor', 'status': 'active'},
                 {'original_id': 102, 'name': 'Датчик влажности', 'type': 'sensor', 'status': 'active'},
@@ -148,9 +149,6 @@ def load_data(network_id):
             
         except Exception as e:
             flash(f'Ошибка: {str(e)}', 'error')
-    
-    # Получить информацию о сети для отображения
-    network_info = iot_service.get_network_details(network_id)
     
     return render_template('load_data.html',
                          network_info=network_info,
@@ -203,5 +201,70 @@ def get_sample_data():
     }
     return jsonify(sample_data)
 
+# Создаем пользовательские фильтры для Jinja2
+@app.template_filter('to_datetime')
+def to_datetime_filter(value):
+    """Конвертировать строку в datetime"""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except:
+            return datetime.now()
+    return value
+
+@app.context_processor
+def utility_processor():
+    """Добавить утилиты в контекст шаблонов"""
+    def now():
+        return datetime.now()
+    return dict(now=now)
+
+# Также добавим новую страницу для управления источниками данных
+@app.route('/data_sources/<int:network_id>')
+def data_sources(network_id):
+    """Страница управления источниками данных"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    network_info = iot_service.get_network_details(network_id)
+    
+    # Получить детальную информацию об источниках
+    sources_info = []
+    for source in network_info.get('data_sources', []):
+        last_update = datetime.fromisoformat(source['last_update'])
+        hours_since_update = (datetime.now() - last_update).total_seconds() / 3600
+        
+        sources_info.append({
+            **source,
+            'hours_since_update': round(hours_since_update, 1),
+            'needs_update': hours_since_update > 24
+        })
+    
+    return render_template('data_sources.html',
+                         network_info=network_info,
+                         sources_info=sources_info,
+                         user_role=session.get('user_role'))
+
+@app.template_filter('to_datetime')
+def to_datetime_filter(value):
+    """Конвертировать строку в datetime"""
+    if isinstance(value, str):
+        try:
+            return dateutil.parser.parse(value)
+        except:
+            try:
+                return datetime.fromisoformat(value.replace('Z', '+00:00'))
+            except:
+                return datetime.now()
+    return value
+
+@app.context_processor
+def utility_processor():
+    """Добавить утилиты в контекст шаблонов"""
+    def now():
+        return datetime.now()
+    return dict(now=now)
+
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')
