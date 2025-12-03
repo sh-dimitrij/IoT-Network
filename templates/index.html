@@ -21,12 +21,60 @@
                 </form>
                 <hr>
                 <h6>Тестовые пользователи:</h6>
-                <ul>
-                    <li><strong>Администратор:</strong> admin / admin123</li>
-                    <li><strong>Аналитик:</strong> analyst / analyst123</li>
+                <p class="text-muted small mb-2">Нажмите чтобы скопировать:</p>
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <strong>Администратор:</strong> 
+                        <span class="copy-text badge bg-primary me-1" data-text="admin" style="cursor: pointer;">admin</span> / 
+                        <span class="copy-text badge bg-secondary" data-text="admin123" style="cursor: pointer;">admin123</span>
+                    </li>
+                    <li>
+                        <strong>Аналитик:</strong> 
+                        <span class="copy-text badge bg-primary me-1" data-text="analyst" style="cursor: pointer;">analyst</span> / 
+                        <span class="copy-text badge bg-secondary" data-text="analyst123" style="cursor: pointer;">analyst123</span>
+                    </li>
                 </ul>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Функция для копирования текста
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            // Простое уведомление
+            // alert('Скопировано: ' + text);
+        }).catch(err => {
+            console.error('Ошибка копирования: ', err);
+            // Fallback
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            // alert('Скопировано: ' + text);
+        });
+    }
+    
+    // Добавляем обработчики для элементов с классом copy-text
+    document.querySelectorAll('.copy-text').forEach(element => {
+        element.addEventListener('click', function() {
+            const textToCopy = this.getAttribute('data-text');
+            copyToClipboard(textToCopy);
+            
+            // Автозаполнение поля формы
+            if (textToCopy === 'admin' || textToCopy === 'analyst') {
+                document.getElementById('login').value = textToCopy;
+            } else {
+                document.getElementById('password').value = textToCopy;
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

@@ -295,5 +295,28 @@ def get_sample_data():
     }
     return jsonify(sample_data)
 
+@app.route('/delete_network/<int:network_id>', methods=['POST'])
+def delete_network(network_id):
+    """Удалить сеть"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    # Проверить, принадлежит ли сеть пользователю
+    networks = iot_service.get_user_networks(session['user_id'])
+    network_exists = any(network['id'] == network_id for network in networks)
+    
+    if not network_exists:
+        flash('Сеть не найдена или у вас нет прав для ее удаления', 'error')
+        return redirect(url_for('dashboard'))
+    
+    result = iot_service.delete_network(network_id)
+    
+    if result['success']:
+        flash(result['message'], 'success')
+    else:
+        flash(f'Ошибка: {result["error"]}', 'error')
+    
+    return redirect(url_for('dashboard'))
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000, host='0.0.0.0')

@@ -17,8 +17,19 @@
 {% if network_info %}
     <!-- Детальная информация о конкретной сети -->
     <div class="card mb-4">
-        <div class="card-header">
-            <h4>Сеть: {{ network_info.network.name }}</h4>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-0">Сеть: {{ network_info.network.name }}</h4>
+                <small class="text-muted">ID: {{ network_info.network.id }} | Создано: {{ network_info.network.created_at[:10] }}</small>
+            </div>
+            <div>
+                <form method="POST" action="{{ url_for('delete_network', network_id=network_info.network.id) }}" 
+                      class="d-inline" onsubmit="return confirm('ВНИМАНИЕ! Вы удаляете сеть и ВСЕ связанные данные (устройства, источники, анализы). Это действие нельзя отменить. Продолжить?');">
+                    <button type="submit" class="btn btn-danger btn-sm">
+                        🗑️ Удалить сеть
+                    </button>
+                </form>
+            </div>
         </div>
         <div class="card-body">
             <p>{{ network_info.network.description or 'Нет описания' }}</p>
@@ -76,7 +87,7 @@
                                                 <th>Тип</th>
                                                 <th>Статус</th>
                                                 <th>Связи</th>
-                                                <th>Действия</th>  <!-- Добавлен столбец -->
+                                                <th>Действия</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -88,10 +99,10 @@
                                                 <td><span class="badge bg-light text-dark">{{ device.connections_count }}</span></td>
                                                 <td>
                                                     <form method="POST" action="{{ url_for('manage_device', device_id=device.id) }}" 
-                                                        class="d-inline" onsubmit="return confirm('Удалить устройство?');">
+                                                          class="d-inline" onsubmit="return confirm('Удалить устройство \"{{ device.name }}\"?');">
                                                         <input type="hidden" name="action" value="delete">
                                                         <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
-                                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить устройство">
                                                             🗑️
                                                         </button>
                                                     </form>
@@ -101,6 +112,8 @@
                                         </tbody>
                                     </table>
                                 </div>
+                            {% else %}
+                                <p class="text-muted">Нет устройств</p>
                             {% endif %}
                         </div>
                     </div>
@@ -195,17 +208,20 @@
                                                 <small>{{ source.last_update[:16] }}</small>
                                                 <br>
                                                 <small class="text-muted">
-                                                    {% set last_update_time = source.last_update %}
-                                                    {% if last_update_time is string %}
-                                                        {% set hours_diff = 0 %}
-                                                    {% else %}
-                                                        {% set hours_diff = (now() - last_update_time).total_seconds() / 3600 %}
+                                                    {% set hours_diff = 0 %}
+                                                    {% if source.last_update %}
+                                                        {% set source_time = source.last_update|to_datetime %}
+                                                        {% set hours_diff = (now() - source_time).total_seconds() / 3600 %}
                                                     {% endif %}
                                                     {{ "%.1f"|format(hours_diff) }} часов назад
                                                 </small>
                                             </td>
                                             <td>
-                                                {% set hours_diff = (now() - source.last_update).total_seconds() / 3600 if source.last_update is not string else 24 %}
+                                                {% set hours_diff = 0 %}
+                                                {% if source.last_update %}
+                                                    {% set source_time = source.last_update|to_datetime %}
+                                                    {% set hours_diff = (now() - source_time).total_seconds() / 3600 %}
+                                                {% endif %}
                                                 {% if hours_diff > 24 %}
                                                     <span class="badge bg-warning">Требует обновления</span>
                                                 {% else %}
@@ -213,12 +229,22 @@
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <button class="btn btn-sm btn-outline-primary" title="Обновить">
-                                                    🔄
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-danger" title="Удалить">
-                                                    🗑️
-                                                </button>
+                                                <form method="POST" action="{{ url_for('manage_source', source_id=source.id) }}" 
+                                                      class="d-inline" onsubmit="return confirm('Обновить время источника \"{{ source.name }}\"?');">
+                                                    <input type="hidden" name="action" value="update">
+                                                    <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" title="Обновить время">
+                                                        🔄
+                                                    </button>
+                                                </form>
+                                                <form method="POST" action="{{ url_for('manage_source', source_id=source.id) }}" 
+                                                      class="d-inline" onsubmit="return confirm('Удалить источник \"{{ source.name }}\"?');">
+                                                    <input type="hidden" name="action" value="delete">
+                                                    <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Удалить источник">
+                                                        🗑️
+                                                    </button>
+                                                </form>
                                             </td>
                                         </tr>
                                         {% endfor %}
@@ -253,12 +279,25 @@
             <div class="col-md-6 mb-3">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">{{ network.name }}</h5>
-                        <p class="card-text text-muted">{{ network.description or 'Нет описания' }}</p>
-                        <p class="card-text">
-                            <small class="text-muted">Создано: {{ network.created_at[:10] if network.created_at else 'Неизвестно' }}</small>
-                        </p>
-                        <div class="d-flex justify-content-between">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h5 class="card-title">{{ network.name }}</h5>
+                                <p class="card-text text-muted">{{ network.description or 'Нет описания' }}</p>
+                                <p class="card-text">
+                                    <small class="text-muted">Создано: {{ network.created_at[:10] if network.created_at else 'Неизвестно' }}</small>
+                                </p>
+                            </div>
+                            <div>
+                                <form method="POST" action="{{ url_for('delete_network', network_id=network.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('Удалить сеть \"{{ network.name }}\"? Все данные будут потеряны.');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" title="Удалить сеть">
+                                        🗑️
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-3">
                             <a href="{{ url_for('network_details', network_id=network.id) }}" 
                                class="btn btn-sm btn-outline-primary">
                                 Подробнее

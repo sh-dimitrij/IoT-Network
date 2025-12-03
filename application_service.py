@@ -753,6 +753,36 @@ class IoTNetworkApplicationService:
             }
         }
     
+    # В класс IoTNetworkApplicationService добавить метод:
+
+    def delete_network(self, network_id: int) -> Dict[str, Any]:
+        """Удалить IoT сеть и все связанные данные"""
+        try:
+            cursor = self.conn.cursor()
+            
+            # Получить имя сети перед удалением
+            cursor.execute('SELECT network_name FROM iot_networks WHERE id = ?', (network_id,))
+            row = cursor.fetchone()
+            
+            if not row:
+                return {'success': False, 'error': f'Сеть с ID {network_id} не найдена'}
+            
+            network_name = row[0]
+            
+            # Удалить сеть (каскадно удалит все связанные данные благодаря FOREIGN KEY CASCADE)
+            cursor.execute('DELETE FROM iot_networks WHERE id = ?', (network_id,))
+            
+            self.conn.commit()
+            
+            return {
+                'success': True,
+                'message': f'Сеть "{network_name}" и все связанные данные успешно удалены'
+            }
+            
+        except Exception as e:
+            self.conn.rollback()
+            return {'success': False, 'error': str(e)}
+    
     def close(self):
         """Закрыть соединение с БД"""
         self.conn.close()
