@@ -76,6 +76,7 @@
                                                 <th>Тип</th>
                                                 <th>Статус</th>
                                                 <th>Связи</th>
+                                                <th>Действия</th>  <!-- Добавлен столбец -->
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -85,13 +86,21 @@
                                                 <td><span class="badge bg-info">{{ device.type }}</span></td>
                                                 <td><span class="badge bg-{{ 'success' if device.status == 'active' else 'secondary' }}">{{ device.status }}</span></td>
                                                 <td><span class="badge bg-light text-dark">{{ device.connections_count }}</span></td>
+                                                <td>
+                                                    <form method="POST" action="{{ url_for('manage_device', device_id=device.id) }}" 
+                                                        class="d-inline" onsubmit="return confirm('Удалить устройство?');">
+                                                        <input type="hidden" name="action" value="delete">
+                                                        <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                            🗑️
+                                                        </button>
+                                                    </form>
+                                                </td>
                                             </tr>
                                             {% endfor %}
                                         </tbody>
                                     </table>
                                 </div>
-                            {% else %}
-                                <p class="text-muted">Нет устройств</p>
                             {% endif %}
                         </div>
                     </div>

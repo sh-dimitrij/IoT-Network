@@ -136,18 +136,23 @@ class UserFinder:
 
 
 class DeviceGateway:
-    """Row Data Gateway для устройства IoT"""
+    """ Row Data Gateway для устройства IoT"""
     
     def __init__(self, connection: sqlite3.Connection):
         self.conn = connection
-        self.id: Optional[int] = None
-        self.device_name: Optional[str] = None
-        self.status: Optional[str] = None
-        self.type: Optional[str] = None
-        self.network_id: Optional[int] = None
+        self._clear()
+    
+    def _clear(self):
+        """Очистить все поля объекта"""
+        self.id = None
+        self.device_name = None
+        self.status = None
+        self.type = None
+        self.network_id = None
     
     def load(self, device_id: int) -> bool:
         """Загрузить данные устройства по ID"""
+        self._clear()  # Очищаем перед загрузкой
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT id, device_name, status, type, network_id 

@@ -3,14 +3,34 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from datetime import datetime, timedelta
 from typing import List, Tuple
 from application_service import IoTNetworkApplicationService
-import jinja2
-import dateutil.parser
+
 app = Flask(__name__)
 app.secret_key = 'iot-network-analysis-secret-key'
 app.config['SESSION_TYPE'] = 'filesystem'
 
 # Инициализация сервиса
 iot_service = IoTNetworkApplicationService()
+
+# Пользовательские фильтры для Jinja2
+@app.template_filter('to_datetime')
+def to_datetime_filter(value):
+    """Конвертировать строку в datetime"""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except:
+            try:
+                return datetime.strptime(value[:19], '%Y-%m-%d %H:%M:%S')
+            except:
+                return datetime.now()
+    return value
+
+@app.context_processor
+def utility_processor():
+    """Добавить утилиты в контекст шаблонов"""
+    def now():
+        return datetime.now()
+    return dict(now=now)
 
 @app.route('/')
 def index():
@@ -101,43 +121,14 @@ def load_data(network_id):
     network_info = iot_service.get_network_details(network_id)
     
     if request.method == 'POST':
-        try:
-            # Пример данных устройств
-            sample_devices = [
-                {'original_id': 101, 'name': 'Температурный датчик', 'type': 'sensor', 'status': 'active'},
-                {'original_id': 102, 'name': 'Датчик влажности', 'type': 'sensor', 'status': 'active'},
-                {'original_id': 103, 'name': 'Умный светильник', 'type': 'actuator', 'status': 'active'},
-                {'original_id': 104, 'name': 'Кондиционер', 'type': 'actuator', 'status': 'active'},
-                {'original_id': 105, 'name': 'Шлюз Zigbee', 'type': 'gateway', 'status': 'active'},
-                {'original_id': 106, 'name': 'Датчик движения', 'type': 'sensor', 'status': 'inactive'}
-            ]
+        action = request.form.get('action')
+        
+        if action == 'load_sample':
+            dataset_name = request.form.get('dataset')
             
-            # Пример связей
-            sample_connections: List[Tuple[int, int]] = [
-                (101, 105), (102, 105), (105, 103), (105, 104),
-                (101, 104), (101, 104), (103, 104), (106, 105)
-            ]
-            
-            # Пример источников данных
-            sample_data_sources = [
-                {
-                    'name': 'Home Assistant API',
-                    'type': 'api',
-                    'last_update': (datetime.now() - timedelta(hours=2)).isoformat()
-                },
-                {
-                    'name': 'MQTT Broker',
-                    'type': 'stream',
-                    'last_update': datetime.now().isoformat()
-                }
-            ]
-            
-            # Вызов прецедента загрузки данных
             result = iot_service.load_iot_data(
                 network_id=network_id,
-                devices_data=sample_devices,
-                connections_data=sample_connections,
-                data_sources_data=sample_data_sources
+                dataset_name=dataset_name
             )
             
             if result['success']:
@@ -146,13 +137,116 @@ def load_data(network_id):
                 flash(f'Ошибка загрузки: {result["error"]}', 'error')
             
             return redirect(url_for('network_details', network_id=network_id))
+        
+        elif action == 'add_device':
+            device_name = request.form.get('device_name')
+            device_type = request.form.get('device_type')
+            device_status = request.form.get('device_status', 'active')
             
-        except Exception as e:
-            flash(f'Ошибка: {str(e)}', 'error')
+            if device_name and device_type:
+                device_data = {
+                    'name': device_name,
+                    'type': device_type,
+                    'status': device_status,
+                    'connections': []
+                }
+                
+                result = iot_service.add_device(network_id, device_data)
+                
+                if result['success']:
+                    flash(result['message'], 'success')
+                else:
+                    flash(f'Ошибка: {result["error"]}', 'error')
+            
+            return redirect(url_for('load_data', network_id=network_id))
+        
+        elif action == 'add_source':
+            source_name = request.form.get('source_name')
+            source_type = request.form.get('source_type')
+            
+            if source_name and source_type:
+                source_data = {
+                    'name': source_name,
+                    'type': source_type,
+                    'last_update': datetime.now().isoformat()
+                }
+                
+                result = iot_service.add_data_source(network_id, source_data)
+                
+                if result['success']:
+                    flash(result['message'], 'success')
+                else:
+                    flash(f'Ошибка: {result["error"]}', 'error')
+            
+            return redirect(url_for('load_data', network_id=network_id))
+    
+    # Получить наборы данных
+    datasets = iot_service.get_sample_datasets()
     
     return render_template('load_data.html',
                          network_info=network_info,
+                         datasets=datasets,
                          user_role=session.get('user_role'))
+
+@app.route('/manage_device/<int:device_id>', methods=['POST'])
+def manage_device(device_id):
+    """Управление устройством (удаление)"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    action = request.form.get('action')
+    
+    if action == 'delete':
+        result = iot_service.remove_device(device_id)
+        
+        if result['success']:
+            flash(result['message'], 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
+    
+    # Получить network_id для редиректа
+    network_info = iot_service.get_network_details(
+        request.form.get('network_id', type=int)
+    )
+    
+    if network_info:
+        return redirect(url_for('network_details', network_id=network_info['network']['id']))
+    
+    return redirect(url_for('dashboard'))
+
+@app.route('/manage_source/<int:source_id>', methods=['POST'])
+def manage_source(source_id):
+    """Управление источником данных"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    action = request.form.get('action')
+    
+    if action == 'delete':
+        result = iot_service.remove_data_source(source_id)
+        
+        if result['success']:
+            flash(result['message'], 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
+    
+    elif action == 'update':
+        result = iot_service.update_data_source(source_id)
+        
+        if result['success']:
+            flash(result['message'], 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
+    
+    # Получить network_id для редиректа
+    network_info = iot_service.get_network_details(
+        request.form.get('network_id', type=int)
+    )
+    
+    if network_info:
+        return redirect(url_for('network_details', network_id=network_info['network']['id']))
+    
+    return redirect(url_for('dashboard'))
 
 @app.route('/analyze/<int:network_id>', methods=['GET', 'POST'])
 def analyze_network(network_id):
@@ -200,71 +294,6 @@ def get_sample_data():
         ]
     }
     return jsonify(sample_data)
-
-# Создаем пользовательские фильтры для Jinja2
-@app.template_filter('to_datetime')
-def to_datetime_filter(value):
-    """Конвертировать строку в datetime"""
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace('Z', '+00:00'))
-        except:
-            return datetime.now()
-    return value
-
-@app.context_processor
-def utility_processor():
-    """Добавить утилиты в контекст шаблонов"""
-    def now():
-        return datetime.now()
-    return dict(now=now)
-
-# Также добавим новую страницу для управления источниками данных
-@app.route('/data_sources/<int:network_id>')
-def data_sources(network_id):
-    """Страница управления источниками данных"""
-    if 'user_id' not in session:
-        return redirect(url_for('index'))
-    
-    network_info = iot_service.get_network_details(network_id)
-    
-    # Получить детальную информацию об источниках
-    sources_info = []
-    for source in network_info.get('data_sources', []):
-        last_update = datetime.fromisoformat(source['last_update'])
-        hours_since_update = (datetime.now() - last_update).total_seconds() / 3600
-        
-        sources_info.append({
-            **source,
-            'hours_since_update': round(hours_since_update, 1),
-            'needs_update': hours_since_update > 24
-        })
-    
-    return render_template('data_sources.html',
-                         network_info=network_info,
-                         sources_info=sources_info,
-                         user_role=session.get('user_role'))
-
-@app.template_filter('to_datetime')
-def to_datetime_filter(value):
-    """Конвертировать строку в datetime"""
-    if isinstance(value, str):
-        try:
-            return dateutil.parser.parse(value)
-        except:
-            try:
-                return datetime.fromisoformat(value.replace('Z', '+00:00'))
-            except:
-                return datetime.now()
-    return value
-
-@app.context_processor
-def utility_processor():
-    """Добавить утилиты в контекст шаблонов"""
-    def now():
-        return datetime.now()
-    return dict(now=now)
-
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000, host='0.0.0.0')
