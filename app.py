@@ -8,10 +8,8 @@ app = Flask(__name__)
 app.secret_key = 'iot-network-analysis-secret-key'
 app.config['SESSION_TYPE'] = 'filesystem'
 
-# Инициализация сервиса
 iot_service = IoTNetworkApplicationService()
 
-# Пользовательские фильтры для Jinja2
 @app.template_filter('to_datetime')
 def to_datetime_filter(value):
     """Конвертировать строку в datetime"""
@@ -69,8 +67,7 @@ def dashboard():
     """Панель управления"""
     if 'user_id' not in session:
         return redirect(url_for('index'))
-    
-    # Получить сети пользователя
+
     networks = iot_service.get_user_networks(session['user_id'])
     
     return render_template('network_info.html', 
@@ -119,6 +116,10 @@ def load_data(network_id):
         return redirect(url_for('index'))
     
     network_info = iot_service.get_network_details(network_id)
+
+    if not network_info or 'network' not in network_info or not network_info['network'] or 'id' not in network_info['network']:
+        flash('Сеть не найдена', 'error')
+        return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
         action = request.form.get('action')
@@ -179,9 +180,11 @@ def load_data(network_id):
                     flash(f'Ошибка: {result["error"]}', 'error')
             
             return redirect(url_for('load_data', network_id=network_id))
-    
-    # Получить наборы данных
+
     datasets = iot_service.get_sample_datasets()
+
+    if datasets is None:
+        datasets = {}
     
     return render_template('load_data.html',
                          network_info=network_info,
@@ -203,8 +206,7 @@ def manage_device(device_id):
             flash(result['message'], 'success')
         else:
             flash(f'Ошибка: {result["error"]}', 'error')
-    
-    # Получить network_id для редиректа
+
     network_info = iot_service.get_network_details(
         request.form.get('network_id', type=int)
     )
@@ -237,8 +239,7 @@ def manage_source(source_id):
             flash(result['message'], 'success')
         else:
             flash(f'Ошибка: {result["error"]}', 'error')
-    
-    # Получить network_id для редиректа
+
     network_info = iot_service.get_network_details(
         request.form.get('network_id', type=int)
     )
@@ -257,7 +258,7 @@ def analyze_network(network_id):
     network_info = iot_service.get_network_details(network_id)
     
     if request.method == 'POST':
-        # Вызов прецедента анализа
+
         result = iot_service.analyze_topology_and_connections(network_id)
         
         if result['success']:
@@ -300,8 +301,7 @@ def delete_network(network_id):
     """Удалить сеть"""
     if 'user_id' not in session:
         return redirect(url_for('index'))
-    
-    # Проверить, принадлежит ли сеть пользователю
+
     networks = iot_service.get_user_networks(session['user_id'])
     network_exists = any(network['id'] == network_id for network in networks)
     

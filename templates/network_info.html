@@ -26,7 +26,7 @@
                 <form method="POST" action="{{ url_for('delete_network', network_id=network_info.network.id) }}" 
                       class="d-inline" onsubmit="return confirm('ВНИМАНИЕ! Вы удаляете сеть и ВСЕ связанные данные (устройства, источники, анализы). Это действие нельзя отменить. Продолжить?');">
                     <button type="submit" class="btn btn-danger btn-sm">
-                        🗑️ Удалить сеть
+                        Удалить сеть
                     </button>
                 </form>
             </div>
@@ -129,16 +129,16 @@
                             <div class="d-grid gap-2 mb-3">
                                 <a href="{{ url_for('load_data', network_id=network_info.network.id) }}" 
                                    class="btn btn-primary">
-                                    📥 Загрузить данные IoT
+                                    Загрузить данные IoT
                                 </a>
                                 <a href="{{ url_for('analyze_network', network_id=network_info.network.id) }}" 
                                    class="btn btn-success">
-                                    🔍 Анализировать топологию
+                                    Анализировать топологию
                                 </a>
                                 {% if network_info.data_sources %}
                                 <a href="#sources-section" 
                                    class="btn btn-info">
-                                    📊 Показать источники
+                                    Показать источники
                                 </a>
                                 {% endif %}
                             </div>
@@ -171,7 +171,7 @@
                 <div class="col-12">
                     <div class="card">
                         <div class="card-header">
-                            <h5>📊 Источники данных ({{ network_info.stats.total_data_sources }})</h5>
+                            <h5>Источники данных ({{ network_info.stats.total_data_sources }})</h5>
                         </div>
                         <div class="card-body">
                             <div class="table-responsive">

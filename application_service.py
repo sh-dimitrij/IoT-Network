@@ -1,12 +1,11 @@
-# application_service.py
-import sqlite3
+from typing import List, Dict, Any, Optional, Tuple, Set
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+import sqlite3
 from domain_models import (
     User, UserRole,
     Device, DeviceStatus, DeviceType,
     DataSource, DataSourceType,
-    IoTNetwork, AnalysisResult
+    IoTNetwork, Analysis
 )
 from gateways import (
     UserFinder, UserGateway,
@@ -140,34 +139,36 @@ class IoTNetworkApplicationService:
         
         self.conn.commit()
     
-    # ===== МЕТОДЫ ДЛЯ УСТРОЙСТВ =====
     
     def add_device(self, network_id: int, device_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Добавить устройство вручную"""
+        """Добавить устройство вручную (с использованием Gateway)"""
         try:
-            cursor = self.conn.cursor()
+            # Проверить существование сети через Finder
+            network_finder = IoTNetworkFinder(self.conn)
+            network_gateway = network_finder.find_by_id(network_id)
             
-            cursor.execute('''
-                INSERT INTO devices (device_name, status, type, network_id)
-                VALUES (?, ?, ?, ?)
-            ''', (
-                device_data['name'],
-                device_data.get('status', 'active'),
-                device_data['type'],
-                network_id
-            ))
+            if not network_gateway:
+                return {'success': False, 'error': f'Сеть с ID {network_id} не найдена'}
             
-            device_id = cursor.lastrowid
+            # Создать доменную модель устройства
+            device = Device(
+                id=None,
+                device_name=device_data['name'],
+                status=DeviceStatus(device_data.get('status', 'active')),
+                type=DeviceType(device_data['type']),
+                network_id=network_id,
+                connections=device_data.get('connections', [])
+            )
             
-            # Сохранить связи
+            # Сохранить через Gateway
+            device_gateway = DeviceGateway(self.conn)
+            device_gateway.from_domain_model(device)
+            device_id = device_gateway.insert()
+            
+            # Сохранить связи устройства
             connections = device_data.get('connections', [])
-            for connected_id in connections:
-                cursor.execute('''
-                    INSERT INTO device_connections (device_id, connected_device_id)
-                    VALUES (?, ?)
-                ''', (device_id, connected_id))
-            
-            self.conn.commit()
+            if connections:
+                device_gateway.save_connections(connections)
             
             return {
                 'success': True,
@@ -176,27 +177,25 @@ class IoTNetworkApplicationService:
             }
             
         except Exception as e:
-            self.conn.rollback()
             return {'success': False, 'error': str(e)}
     
     def remove_device(self, device_id: int) -> Dict[str, Any]:
-        """Удалить устройство из сети"""
+        """Удалить устройство из сети (с использованием Gateway)"""
         try:
-            cursor = self.conn.cursor()
+
+            device_finder = DeviceFinder(self.conn)
+            device_gateway = device_finder.find_by_id(device_id)
             
-            # Получить имя устройства перед удалением
-            cursor.execute('SELECT device_name FROM devices WHERE id = ?', (device_id,))
-            row = cursor.fetchone()
-            
-            if not row:
+            if not device_gateway:
                 return {'success': False, 'error': f'Устройство с ID {device_id} не найдено'}
+
+            device = device_gateway.to_domain_model()
+            if not device:
+                return {'success': False, 'error': 'Ошибка загрузки устройства'}
             
-            device_name = row[0]
-            
-            # Удалить устройство (каскадно удалит связи)
-            cursor.execute('DELETE FROM devices WHERE id = ?', (device_id,))
-            
-            self.conn.commit()
+            device_name = device.device_name
+
+            device_gateway.delete()
             
             return {
                 'success': True,
@@ -204,29 +203,30 @@ class IoTNetworkApplicationService:
             }
             
         except Exception as e:
-            self.conn.rollback()
             return {'success': False, 'error': str(e)}
     
-    # ===== МЕТОДЫ ДЛЯ ИСТОЧНИКОВ ДАННЫХ =====
     
     def add_data_source(self, network_id: int, source_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Добавить источник данных"""
+        """Добавить источник данных (с использованием Gateway)"""
         try:
-            cursor = self.conn.cursor()
+
+            network_finder = IoTNetworkFinder(self.conn)
+            if not network_finder.find_by_id(network_id):
+                return {'success': False, 'error': f'Сеть с ID {network_id} не найдена'}
             
-            cursor.execute('''
-                INSERT INTO data_sources (datasource_name, last_update, type, network_id)
-                VALUES (?, ?, ?, ?)
-            ''', (
-                source_data['name'],
-                source_data.get('last_update', datetime.now().isoformat()),
-                source_data['type'],
-                network_id
-            ))
+
+            data_source = DataSource(
+                id=None,
+                datasource_name=source_data['name'],
+                last_update=datetime.fromisoformat(source_data.get('last_update', datetime.now().isoformat())),
+                type=DataSourceType(source_data['type']),
+                network_id=network_id
+            )
             
-            source_id = cursor.lastrowid
-            
-            self.conn.commit()
+
+            source_gateway = DataSourceGateway(self.conn)
+            source_gateway.from_domain_model(data_source)
+            source_id = source_gateway.insert()
             
             return {
                 'success': True,
@@ -235,27 +235,27 @@ class IoTNetworkApplicationService:
             }
             
         except Exception as e:
-            self.conn.rollback()
             return {'success': False, 'error': str(e)}
     
     def remove_data_source(self, source_id: int) -> Dict[str, Any]:
-        """Удалить источник данных"""
+        """Удалить источник данных (с использованием Gateway)"""
         try:
-            cursor = self.conn.cursor()
+
+            source_finder = DataSourceFinder(self.conn)
+            source_gateway = source_finder.find_by_id(source_id)
             
-            # Получить имя источника перед удалением
-            cursor.execute('SELECT datasource_name FROM data_sources WHERE id = ?', (source_id,))
-            row = cursor.fetchone()
-            
-            if not row:
+            if not source_gateway:
                 return {'success': False, 'error': f'Источник данных с ID {source_id} не найден'}
             
-            source_name = row[0]
+
+            data_source = source_gateway.to_domain_model()
+            if not data_source:
+                return {'success': False, 'error': 'Ошибка загрузки источника данных'}
             
-            # Удалить источник
-            cursor.execute('DELETE FROM data_sources WHERE id = ?', (source_id,))
+            source_name = data_source.datasource_name
             
-            self.conn.commit()
+
+            source_gateway.delete()
             
             return {
                 'success': True,
@@ -263,10 +263,8 @@ class IoTNetworkApplicationService:
             }
             
         except Exception as e:
-            self.conn.rollback()
             return {'success': False, 'error': str(e)}
     
-    # ===== НАБОРЫ ПРИМЕРНЫХ ДАННЫХ =====
     
     def get_sample_datasets(self) -> Dict[str, Dict[str, Any]]:
         """Получить наборы примерных данных"""
@@ -357,7 +355,6 @@ class IoTNetworkApplicationService:
             }
         }
     
-    # ===== ПРЕЦЕДЕНТ 1: ЗАГРУЗКА ДАННЫХ ОБ УСТРОЙСТВАХ И СВЯЗЯХ =====
     
     def load_iot_data(
         self,
@@ -366,15 +363,15 @@ class IoTNetworkApplicationService:
     ) -> Dict[str, Any]:
         """
         Реализация прецедента "Загрузить данные об IoT-устройствах и -связях"
+        С ИСПОЛЬЗОВАНИЕМ Gateway/Finders/Domain Models
         """
         try:
-            # Проверить существование сети
-            cursor = self.conn.cursor()
-            cursor.execute('SELECT id FROM iot_networks WHERE id = ?', (network_id,))
-            if not cursor.fetchone():
-                return {'success': False, 'error': f"Сеть с ID {network_id} не найдена"}
+            network_finder = IoTNetworkFinder(self.conn)
+            network_gateway = network_finder.find_by_id(network_id)
             
-            # Выбрать источник данных
+            if not network_gateway:
+                return {'success': False, 'error': f"Сеть с ID {network_id} не найдена"}
+
             if not dataset_name:
                 return {'success': False, 'error': "Не указан набор данных"}
             
@@ -387,70 +384,91 @@ class IoTNetworkApplicationService:
             connections_data = dataset['connections']
             data_sources_data = dataset['data_sources']
             
-            # Начать транзакцию
-            cursor = self.conn.cursor()
+
+            self.conn.execute('BEGIN TRANSACTION')
+
+            device_finder = DeviceFinder(self.conn)
+            existing_device_gateways = device_finder.find_by_network(network_id)
             
-            # Удалить существующие данные (если есть)
-            cursor.execute('DELETE FROM device_connections WHERE device_id IN (SELECT id FROM devices WHERE network_id = ?)', (network_id,))
-            cursor.execute('DELETE FROM devices WHERE network_id = ?', (network_id,))
-            cursor.execute('DELETE FROM data_sources WHERE network_id = ?', (network_id,))
+            for device_gateway in existing_device_gateways:
+                device_gateway.delete()
             
-            # Загрузить устройства
+            data_source_finder = DataSourceFinder(self.conn)
+            existing_source_gateways = data_source_finder.find_by_network(network_id)
+            
+            for source_gateway in existing_source_gateways:
+                source_gateway.delete()
+
             device_id_map = {}
             
             for device_data in devices_data:
-                cursor.execute('''
-                    INSERT INTO devices (device_name, status, type, network_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (
-                    device_data['name'],
-                    device_data.get('status', 'active'),
-                    device_data['type'],
-                    network_id
-                ))
+                device = Device(
+                    id=None,
+                    device_name=device_data['name'],
+                    status=DeviceStatus(device_data.get('status', 'active')),
+                    type=DeviceType(device_data['type']),
+                    network_id=network_id,
+                    connections=[]
+                )
                 
-                device_id = cursor.lastrowid
+                device_gateway = DeviceGateway(self.conn)
+                device_gateway.from_domain_model(device)
+                device_id = device_gateway.insert()
                 device_id_map[device_data['original_id']] = device_id
-            
-            # Загрузить связи между устройствами
+
             connection_count = 0
+            seen_connections: Set[Tuple[int, int]] = set()
             
             for source_orig_id, target_orig_id in connections_data:
                 if source_orig_id in device_id_map and target_orig_id in device_id_map:
                     source_id = device_id_map[source_orig_id]
                     target_id = device_id_map[target_orig_id]
                     
-                    try:
-                        cursor.execute('''
-                            INSERT INTO device_connections (device_id, connected_device_id)
-                            VALUES (?, ?)
-                        ''', (source_id, target_id))
-                        connection_count += 1
-                    except sqlite3.IntegrityError:
-                        # Игнорируем дублирующиеся связи
-                        pass
-            
-            # Загрузить источники данных
+                    connection_key = tuple(sorted((source_id, target_id)))
+                    if connection_key in seen_connections:
+                        continue
+                    
+                    seen_connections.add(connection_key)
+                    
+                    source_gateway = device_finder.find_by_id(source_id)
+                    if not source_gateway:
+                        continue
+                    
+                    source_device = source_gateway.to_domain_model()
+                    if not source_device:
+                        continue
+                    
+                    source_device.add_connection(target_id)
+                    source_gateway.from_domain_model(source_device)
+                    source_gateway.save_connections(source_device.connections)
+                    
+                    connection_count += 1
+
             for ds_data in data_sources_data:
-                cursor.execute('''
-                    INSERT INTO data_sources (datasource_name, last_update, type, network_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (
-                    ds_data['name'],
-                    ds_data['last_update'],
-                    ds_data['type'],
-                    network_id
-                ))
+                data_source = DataSource(
+                    id=None,
+                    datasource_name=ds_data['name'],
+                    last_update=datetime.fromisoformat(ds_data['last_update']),
+                    type=DataSourceType(ds_data['type']),
+                    network_id=network_id
+                )
+                
+                source_gateway = DataSourceGateway(self.conn)
+                source_gateway.from_domain_model(data_source)
+                source_gateway.insert()
             
             self.conn.commit()
+
+            final_device_count = len(device_finder.find_by_network(network_id))
+            final_source_count = len(data_source_finder.find_by_network(network_id))
             
             return {
                 'success': True,
-                'message': f"Успешно загружено из '{dataset['name']}': {len(devices_data)} устройств, "
-                          f"{connection_count} связей, {len(data_sources_data)} источников данных",
-                'devices_loaded': len(devices_data),
+                'message': f"Успешно загружено из '{dataset['name']}': {final_device_count} устройств, "
+                          f"{connection_count} связей, {final_source_count} источников данных",
+                'devices_loaded': final_device_count,
                 'connections_loaded': connection_count,
-                'data_sources_loaded': len(data_sources_data),
+                'data_sources_loaded': final_source_count,
                 'dataset_name': dataset['name']
             }
             
@@ -458,14 +476,13 @@ class IoTNetworkApplicationService:
             self.conn.rollback()
             return {'success': False, 'error': str(e)}
     
-    # ===== ПРЕЦЕДЕНТ 2: АНАЛИЗ ТОПОЛОГИИ И СВЯЗЕЙ =====
-    
     def analyze_topology_and_connections(self, network_id: int) -> Dict[str, Any]:
         """
         Реализация прецедента "Проанализировать топологию и связи"
+        С ИСПОЛЬЗОВАНИЕМ Gateway/Finders/Domain Models
         """
         try:
-            # 1. Получить данные сети
+            # 1. Получить данные сети через Finder
             network_finder = IoTNetworkFinder(self.conn)
             network_gateway = network_finder.find_by_id(network_id)
             
@@ -477,14 +494,14 @@ class IoTNetworkApplicationService:
             if not network:
                 return {'success': False, 'error': "Ошибка загрузки сети"}
             
-            # 3. Получить устройства сети
+            # 3. Получить устройства сети через Finder
             device_finder = DeviceFinder(self.conn)
             device_gateways = device_finder.find_by_network(network_id)
             
             if not device_gateways:
                 return {'success': False, 'error': "В сети нет устройств для анализа"}
             
-            # 4. Преобразовать RDG в доменные модели
+            # 4. Преобразовать Gateway в доменные модели
             devices = []
             for device_gateway in device_gateways:
                 device = device_gateway.to_domain_model()
@@ -498,38 +515,23 @@ class IoTNetworkApplicationService:
             # 6. Выполнить анализ топологии
             analysis_result = network.analyze_topology(devices)
             
-            # 7. Сохранить результат анализа
-            cursor = self.conn.cursor()
-            cursor.execute('''
-                INSERT INTO analysis (centrality_score, date, network_id)
-                VALUES (?, ?, ?)
-            ''', (
-                analysis_result.centrality_score,
-                analysis_result.date.isoformat(),
-                network_id
-            ))
+            # 7. Сохранить результат анализа через Gateway
+            analysis_gateway = AnalysisGateway(self.conn)
+            analysis_gateway.centrality_score = analysis_result.centrality_score
+            analysis_gateway.date = analysis_result.date.isoformat()
+            analysis_gateway.network_id = network_id
             
-            analysis_id = cursor.lastrowid
+            analysis_id = analysis_gateway.insert()
             
-            # 8. Сохранить детали анализа
-            for node_id in analysis_result.isolated_nodes:
-                cursor.execute('''
-                    INSERT INTO isolated_nodes (analysis_id, device_id)
-                    VALUES (?, ?)
-                ''', (analysis_id, node_id))
-            
-            for link in analysis_result.redundant_links:
-                cursor.execute('''
-                    INSERT INTO redundant_links (analysis_id, device_id1, device_id2)
-                    VALUES (?, ?, ?)
-                ''', (analysis_id, link[0], link[1]))
-            
-            self.conn.commit()
+            # 8. Сохранить детали анализа через Gateway
+            analysis_gateway.save_details(
+                analysis_result.isolated_nodes,
+                analysis_result.redundant_links
+            )
             
             # 9. Подготовить детализированную информацию
             isolated_devices_info = []
             for node_id in analysis_result.isolated_nodes:
-                device_finder = DeviceFinder(self.conn)
                 device_gateway = device_finder.find_by_id(node_id)
                 if device_gateway:
                     device = device_gateway.to_domain_model()
@@ -544,18 +546,18 @@ class IoTNetworkApplicationService:
             
             redundant_links_info = []
             for link in analysis_result.redundant_links:
-                device1_gateway = DeviceGateway(self.conn)
-                device2_gateway = DeviceGateway(self.conn)
+                device1_gateway = device_finder.find_by_id(link[0])
+                device2_gateway = device_finder.find_by_id(link[1])
                 
                 device1_name = "Неизвестно"
                 device2_name = "Неизвестно"
                 
-                if device1_gateway.load(link[0]):
+                if device1_gateway:
                     device1 = device1_gateway.to_domain_model()
                     if device1:
                         device1_name = device1.device_name
                 
-                if device2_gateway.load(link[1]):
+                if device2_gateway:
                     device2 = device2_gateway.to_domain_model()
                     if device2:
                         device2_name = device2.device_name
@@ -567,13 +569,17 @@ class IoTNetworkApplicationService:
                     'device2_name': device2_name
                 })
             
-            # Получить источники данных
+            # 10. Получить источники данных через Finder
             data_source_finder = DataSourceFinder(self.conn)
             data_source_gateways = data_source_finder.find_by_network(network_id)
             data_sources = [ds.to_domain_model() for ds in data_source_gateways if ds.to_domain_model()]
             
-            # Получить сводку по сети
+            # 11. Получить сводку по сети
             network_summary = network.get_network_summary(devices, data_sources)
+            
+            # 12. Получить историю анализов через Finder
+            analysis_finder = AnalysisFinder(self.conn)
+            recent_analyses = analysis_finder.find_by_network(network_id, limit=5)
             
             return {
                 'success': True,
@@ -588,16 +594,16 @@ class IoTNetworkApplicationService:
                 'redundant_links': redundant_links_info,
                 'has_issues': analysis_result.has_issues(),
                 'total_issues': analysis_result.get_issue_count(),
-                'recommendations': analysis_result.get_recommendations()
+                'recommendations': analysis_result.get_recommendations(),
+                'history_count': len(recent_analyses)
             }
             
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    # ===== ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ =====
     
     def authenticate_user(self, login: str, password: str) -> Optional[User]:
-        """Аутентификация пользователя"""
+        """Аутентификация пользователя (с использованием Gateway/Finder)"""
         user_finder = UserFinder(self.conn)
         user_gateway = user_finder.find_by_login(login)
         
@@ -606,18 +612,19 @@ class IoTNetworkApplicationService:
         return None
     
     def create_network(self, name: str, description: str = "", user_id: Optional[int] = None) -> Dict[str, Any]:
-        """Создать новую IoT сеть"""
+        """Создать новую IoT сеть (с использованием Gateway)"""
         try:
-            cursor = self.conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO iot_networks (network_name, description, user_id)
-                VALUES (?, ?, ?)
-            ''', (name, description, user_id))
-            
-            network_id = cursor.lastrowid
-            
-            self.conn.commit()
+
+            network = IoTNetwork(
+                id=None,
+                description=description,
+                network_name=name,
+                user_id=user_id
+            )
+
+            network_gateway = IoTNetworkGateway(self.conn)
+            network_gateway.from_domain_model(network)
+            network_id = network_gateway.insert()
             
             return {
                 'success': True,
@@ -626,153 +633,173 @@ class IoTNetworkApplicationService:
             }
             
         except Exception as e:
-            self.conn.rollback()
             return {'success': False, 'error': str(e)}
     
     def get_user_networks(self, user_id: int) -> List[Dict[str, Any]]:
-        """Получить все сети пользователя"""
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            SELECT id, network_name, description, created_at 
-            FROM iot_networks 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC
-        ''', (user_id,))
-        
-        networks = []
-        for row in cursor.fetchall():
-            networks.append({
-                'id': row['id'],
-                'name': row['network_name'],
-                'description': row['description'],
-                'created_at': row['created_at']
-            })
-        
-        return networks
+        """Получить все сети пользователя (с использованием Finder/Gateway)"""
+        try:
+            network_finder = IoTNetworkFinder(self.conn)
+            network_gateways = network_finder.find_by_user(user_id)
+            
+            networks = []
+            for network_gateway in network_gateways:
+                network = network_gateway.to_domain_model()
+                if network:
+                    networks.append({
+                        'id': network.id,
+                        'name': network.network_name,
+                        'description': network.description,
+                        'created_at': network.created_at.isoformat() if network.created_at else None
+                    })
+            
+            return networks
+            
+        except Exception as e:
+            return []
     
     def get_network_details(self, network_id: int) -> Dict[str, Any]:
-        """Получить детальную информацию о сети"""
-        cursor = self.conn.cursor()
-        
-        # Получить сеть
-        cursor.execute('''
-            SELECT id, network_name, description, created_at 
-            FROM iot_networks 
-            WHERE id = ?
-        ''', (network_id,))
-        
-        network_row = cursor.fetchone()
-        if not network_row:
-            return {}
-        
-        network = {
-            'id': network_row['id'],
-            'name': network_row['network_name'],
-            'description': network_row['description'],
-            'created_at': network_row['created_at']
-        }
-        
-        # Получить устройства
-        cursor.execute('''
-            SELECT d.id, d.device_name, d.type, d.status, 
-                   COUNT(dc.connected_device_id) as connections_count
-            FROM devices d
-            LEFT JOIN device_connections dc ON d.id = dc.device_id
-            WHERE d.network_id = ?
-            GROUP BY d.id
-            ORDER BY d.type, d.device_name
-        ''', (network_id,))
-        
-        devices = []
-        for row in cursor.fetchall():
-            devices.append({
-                'id': row['id'],
-                'name': row['device_name'],
-                'type': row['type'],
-                'status': row['status'],
-                'connections_count': row['connections_count'] or 0
-            })
-        
-        # Получить источники данных
-        cursor.execute('''
-            SELECT id, datasource_name, type, last_update 
-            FROM data_sources 
-            WHERE network_id = ?
-            ORDER BY datasource_name
-        ''', (network_id,))
-        
-        data_sources = []
-        for row in cursor.fetchall():
-            data_sources.append({
-                'id': row['id'],
-                'name': row['datasource_name'],
-                'type': row['type'],
-                'last_update': row['last_update']
-            })
-        
-        # Получить историю анализов
-        cursor.execute('''
-            SELECT id, centrality_score, date 
-            FROM analysis 
-            WHERE network_id = ? 
-            ORDER BY date DESC 
-            LIMIT 5
-        ''', (network_id,))
-        
-        analyses = []
-        for row in cursor.fetchall():
-            analyses.append({
-                'id': row['id'],
-                'date': row['date'],
-                'centrality_score': row['centrality_score'],
-                'has_issues': False  # Это нужно будет вычислить
-            })
-        
-        # Статистика связей
-        cursor.execute('''
-            SELECT COUNT(*) as total_connections 
-            FROM device_connections 
-            WHERE device_id IN (SELECT id FROM devices WHERE network_id = ?)
-        ''', (network_id,))
-        
-        connections_stat = cursor.fetchone()
-        
-        active_devices = len([d for d in devices if d['status'] == 'active'])
-        
-        return {
-            'network': network,
-            'devices': devices,
-            'data_sources': data_sources,
-            'analyses': analyses,
-            'stats': {
-                'total_devices': len(devices),
-                'active_devices': active_devices,
-                'total_data_sources': len(data_sources),
-                'total_analyses': len(analyses),
-                'total_connections': connections_stat['total_connections'] if connections_stat else 0
-            }
-        }
-    
-    # В класс IoTNetworkApplicationService добавить метод:
-
-    def delete_network(self, network_id: int) -> Dict[str, Any]:
-        """Удалить IoT сеть и все связанные данные"""
+        """Получить детальную информацию о сети (с использованием Finders/Gateways)"""
         try:
-            cursor = self.conn.cursor()
+
+            network_finder = IoTNetworkFinder(self.conn)
+            network_gateway = network_finder.find_by_id(network_id)
             
-            # Получить имя сети перед удалением
-            cursor.execute('SELECT network_name FROM iot_networks WHERE id = ?', (network_id,))
-            row = cursor.fetchone()
+            if not network_gateway:
+
+                return {
+                    'network': {},
+                    'devices': [],
+                    'data_sources': [],
+                    'analyses': [],
+                    'stats': {
+                        'total_devices': 0,
+                        'active_devices': 0,
+                        'total_data_sources': 0,
+                        'total_analyses': 0,
+                        'total_connections': 0
+                    }
+                }
             
-            if not row:
+            network = network_gateway.to_domain_model()
+            if not network:
+                return {
+                    'network': {},
+                    'devices': [],
+                    'data_sources': [],
+                    'analyses': [],
+                    'stats': {
+                        'total_devices': 0,
+                        'active_devices': 0,
+                        'total_data_sources': 0,
+                        'total_analyses': 0,
+                        'total_connections': 0
+                    }
+                }
+            
+
+            device_finder = DeviceFinder(self.conn)
+            device_gateways = device_finder.find_by_network(network_id)
+            
+            devices = []
+            for device_gateway in device_gateways:
+                device = device_gateway.to_domain_model()
+                if device:
+
+                    connections_count = len(device.connections)
+                    devices.append({
+                        'id': device.id,
+                        'name': device.device_name,
+                        'type': device.type.value,
+                        'status': device.status.value,
+                        'connections_count': connections_count
+                    })
+            
+
+            data_source_finder = DataSourceFinder(self.conn)
+            data_source_gateways = data_source_finder.find_by_network(network_id)
+            
+            data_sources = []
+            for source_gateway in data_source_gateways:
+                source = source_gateway.to_domain_model()
+                if source:
+                    data_sources.append({
+                        'id': source.id,
+                        'name': source.datasource_name,
+                        'type': source.type.value,
+                        'last_update': source.last_update.isoformat()
+                    })
+            
+
+            analysis_finder = AnalysisFinder(self.conn)
+            analysis_gateways = analysis_finder.find_by_network(network_id, limit=5)
+            
+            analyses = []
+            for analysis_gateway in analysis_gateways:
+                analysis = analysis_gateway.to_domain_model()
+                if analysis:
+                    analyses.append({
+                        'id': analysis.id,
+                        'date': analysis.date.isoformat(),
+                        'centrality_score': analysis.centrality_score,
+                        'has_issues': analysis.has_issues()
+                    })
+            
+            active_devices = len([d for d in devices if d['status'] == 'active'])
+            total_connections = sum(d['connections_count'] for d in devices)
+
+            network_info = {
+                'id': network.id,
+                'name': network.network_name,
+                'description': network.description or '',
+                'created_at': network.created_at.isoformat() if network.created_at else ''
+            }
+            
+            return {
+                'network': network_info,
+                'devices': devices,
+                'data_sources': data_sources,
+                'analyses': analyses,
+                'stats': {
+                    'total_devices': len(devices),
+                    'active_devices': active_devices,
+                    'total_data_sources': len(data_sources),
+                    'total_analyses': len(analyses),
+                    'total_connections': total_connections
+                }
+            }
+            
+        except Exception as e:
+
+            return {
+                'network': {},
+                'devices': [],
+                'data_sources': [],
+                'analyses': [],
+                'stats': {
+                    'total_devices': 0,
+                    'active_devices': 0,
+                    'total_data_sources': 0,
+                    'total_analyses': 0,
+                    'total_connections': 0
+                }
+            }
+    def delete_network(self, network_id: int) -> Dict[str, Any]:
+        """Удалить IoT сеть (с использованием Gateway)"""
+        try:
+
+            network_finder = IoTNetworkFinder(self.conn)
+            network_gateway = network_finder.find_by_id(network_id)
+            
+            if not network_gateway:
                 return {'success': False, 'error': f'Сеть с ID {network_id} не найдена'}
+
+            network = network_gateway.to_domain_model()
+            if not network:
+                return {'success': False, 'error': 'Ошибка загрузки сети'}
             
-            network_name = row[0]
-            
-            # Удалить сеть (каскадно удалит все связанные данные благодаря FOREIGN KEY CASCADE)
-            cursor.execute('DELETE FROM iot_networks WHERE id = ?', (network_id,))
-            
-            self.conn.commit()
+            network_name = network.network_name
+
+            network_gateway.delete()
             
             return {
                 'success': True,
@@ -780,7 +807,6 @@ class IoTNetworkApplicationService:
             }
             
         except Exception as e:
-            self.conn.rollback()
             return {'success': False, 'error': str(e)}
     
     def close(self):

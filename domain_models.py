@@ -46,10 +46,10 @@ class User:
         return self.role == UserRole.ANALYST
     
     def can_manage_networks(self) -> bool:
-        return True  # Все пользователи могут управлять своими сетями
+        return True
     
     def can_analyze_topology(self) -> bool:
-        return True  # Все пользователи могут анализировать
+        return True 
 
 
 @dataclass
@@ -60,7 +60,7 @@ class Device:
     status: DeviceStatus
     type: DeviceType
     network_id: int
-    connections: List[int]  # IDs других устройств для связей
+    connections: List[int]
     
     def is_active(self) -> bool:
         return self.status == DeviceStatus.ACTIVE
@@ -100,14 +100,14 @@ class DataSource:
 
 
 @dataclass
-class AnalysisResult:
+class Analysis:
     """Доменная модель результата анализа"""
     id: int
-    centrality_score: float  # Средняя центральность сети
+    centrality_score: float
     date: datetime
     network_id: int
-    isolated_nodes: List[int]  # IDs изолированных устройств
-    redundant_links: List[Tuple[int, int]]  # Избыточные связи
+    isolated_nodes: List[int]
+    redundant_links: List[Tuple[int, int]]
     
     def has_issues(self) -> bool:
         """Есть ли проблемы в сети?"""
@@ -160,7 +160,7 @@ class IoTNetwork:
         self.user_id = user_id
         self.created_at: Optional[datetime] = None
     
-    def analyze_topology(self, devices: List[Device]) -> AnalysisResult:
+    def analyze_topology(self, devices: List[Device]) -> Analysis:
         """
         Проанализировать топологию сети на основе метаграфов
         Возвращает результат анализа
@@ -168,16 +168,16 @@ class IoTNetwork:
         if not devices:
             raise ValueError("Нет устройств для анализа")
         
-        # Создаем словарь устройств для быстрого доступа
+
         devices_dict = {device.id: device for device in devices}
         
-        # 1. Найти изолированные узлы (без связей)
+
         isolated_nodes = [
             device_id for device_id, device in devices_dict.items()
             if not device.connections
         ]
         
-        # 2. Найти избыточные связи (дублирующиеся или симметричные)
+
         redundant_links = []
         seen_links: Set[Tuple[int, int]] = set()
         
@@ -186,16 +186,13 @@ class IoTNetwork:
                 link = tuple(sorted((device_id, connected_id)))
                 
                 if link in seen_links:
-                    # Дублирующаяся связь
                     redundant_links.append(link)
                 elif (connected_id in devices_dict and 
                       device_id in devices_dict[connected_id].connections):
-                    # Симметричная связь (уже учтена с другой стороны)
                     redundant_links.append(link)
                 else:
                     seen_links.add(link)
         
-        # 3. Рассчитать центральность сети (степенная центральность)
         centrality_scores = []
         for device in devices_dict.values():
             degree = len(device.connections)
@@ -206,9 +203,9 @@ class IoTNetwork:
         
         avg_centrality = sum(centrality_scores) / len(centrality_scores) if centrality_scores else 0
         
-        # 4. Создать результат анализа
-        return AnalysisResult(
-            id=0,  # ID будет установлен при сохранении
+
+        return Analysis(
+            id=None,
             centrality_score=avg_centrality,
             date=datetime.now(),
             network_id=self.id,
@@ -223,7 +220,7 @@ class IoTNetwork:
         
         device_ids = {device.id for device in devices}
         
-        # Проверить, что все связи ссылаются на существующие устройства
+        
         for device in devices:
             for connected_id in device.connections:
                 if connected_id not in device_ids:

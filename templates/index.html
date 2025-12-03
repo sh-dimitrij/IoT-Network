@@ -43,31 +43,28 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Функция для копирования текста
+
     function copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
-            // Простое уведомление
-            // alert('Скопировано: ' + text);
+
         }).catch(err => {
             console.error('Ошибка копирования: ', err);
-            // Fallback
+
             const textArea = document.createElement('textarea');
             textArea.value = text;
             document.body.appendChild(textArea);
             textArea.select();
             document.execCommand('copy');
             document.body.removeChild(textArea);
-            // alert('Скопировано: ' + text);
+
         });
     }
-    
-    // Добавляем обработчики для элементов с классом copy-text
+
     document.querySelectorAll('.copy-text').forEach(element => {
         element.addEventListener('click', function() {
             const textToCopy = this.getAttribute('data-text');
             copyToClipboard(textToCopy);
-            
-            // Автозаполнение поля формы
+
             if (textToCopy === 'admin' || textToCopy === 'analyst') {
                 document.getElementById('login').value = textToCopy;
             } else {

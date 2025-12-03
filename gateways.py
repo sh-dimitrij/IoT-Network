@@ -6,7 +6,7 @@ from domain_models import (
     User, UserRole,
     Device, DeviceStatus, DeviceType,
     DataSource, DataSourceType,
-    AnalysisResult,
+    Analysis,
     IoTNetwork
 )
 
@@ -152,7 +152,7 @@ class DeviceGateway:
     
     def load(self, device_id: int) -> bool:
         """Загрузить данные устройства по ID"""
-        self._clear()  # Очищаем перед загрузкой
+        self._clear()
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT id, device_name, status, type, network_id 
@@ -202,17 +202,29 @@ class DeviceGateway:
             raise ValueError("Устройство не имеет ID")
         
         cursor = self.conn.cursor()
+
+        cursor.execute('DELETE FROM device_connections WHERE device_id = ? OR connected_device_id = ?', 
+                      (self.id, self.id))
+
         cursor.execute('DELETE FROM devices WHERE id = ?', (self.id,))
+        self.conn.commit()
+
+        cursor.execute('DELETE FROM isolated_nodes WHERE device_id = ?', (self.id,))
+        cursor.execute('DELETE FROM redundant_links WHERE device_id1 = ? OR device_id2 = ?', 
+                      (self.id, self.id))
         
         self.conn.commit()
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+
+        self._clear()
+        
+        return deleted
     
     def to_domain_model(self) -> Optional[Device]:
         """Преобразовать в доменную модель"""
         if self.id is None:
             return None
-        
-        # Загрузить связи устройства
+
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT connected_device_id 
@@ -245,11 +257,9 @@ class DeviceGateway:
             raise ValueError("Устройство не имеет ID")
         
         cursor = self.conn.cursor()
-        
-        # Удалить старые связи
+
         cursor.execute('DELETE FROM device_connections WHERE device_id = ?', (self.id,))
-        
-        # Добавить новые связи
+
         for connected_id in connections:
             cursor.execute('''
                 INSERT INTO device_connections (device_id, connected_device_id)
@@ -604,21 +614,19 @@ class AnalysisGateway:
         self.conn.commit()
         return cursor.rowcount > 0
     
-    def to_domain_model(self) -> Optional[AnalysisResult]:
+    def to_domain_model(self) -> Optional[Analysis]:
         """Преобразовать в доменную модель"""
         if self.id is None:
             return None
-        
-        # Загрузить изолированные узлы
+
         cursor = self.conn.cursor()
         cursor.execute('SELECT device_id FROM isolated_nodes WHERE analysis_id = ?', (self.id,))
         isolated_nodes = [row[0] for row in cursor.fetchall()]
-        
-        # Загрузить избыточные связи
+
         cursor.execute('SELECT device_id1, device_id2 FROM redundant_links WHERE analysis_id = ?', (self.id,))
         redundant_links = [(row[0], row[1]) for row in cursor.fetchall()]
         
-        return AnalysisResult(
+        return Analysis(
             id=self.id,
             centrality_score=self.centrality_score,
             date=datetime.fromisoformat(self.date),
@@ -627,7 +635,7 @@ class AnalysisGateway:
             redundant_links=redundant_links
         )
     
-    def from_domain_model(self, analysis: AnalysisResult):
+    def from_domain_model(self, analysis: Analysis):
         """Загрузить данные из доменной модели"""
         self.id = analysis.id
         self.centrality_score = analysis.centrality_score
@@ -640,15 +648,13 @@ class AnalysisGateway:
             raise ValueError("Анализ не имеет ID")
         
         cursor = self.conn.cursor()
-        
-        # Сохранить изолированные узлы
+
         for node_id in isolated_nodes:
             cursor.execute('''
                 INSERT INTO isolated_nodes (analysis_id, device_id)
                 VALUES (?, ?)
             ''', (self.id, node_id))
-        
-        # Сохранить избыточные связи
+
         for link in redundant_links:
             cursor.execute('''
                 INSERT INTO redundant_links (analysis_id, device_id1, device_id2)
