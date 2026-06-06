@@ -1,3 +1,4 @@
+<!-- templates/network_info.html -->
 {% extends "layout.html" %}
 
 {% block content %}
@@ -16,35 +17,96 @@
 {% if network_info %}
     <!-- Детальная информация о конкретной сети -->
     <div class="card mb-4">
-        <div class="card-header">
-            <h4>Сеть: {{ network_info.network.network_name }}</h4>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-0">Сеть: {{ network_info.network.name }}</h4>
+                <small class="text-muted">ID: {{ network_info.network.id }} | Создано: {{ network_info.network.created_at[:10] }}</small>
+            </div>
+            <div>
+                <form method="POST" action="{{ url_for('delete_network', network_id=network_info.network.id) }}" 
+                      class="d-inline" onsubmit="return confirm('ВНИМАНИЕ! Вы удаляете сеть и ВСЕ связанные данные (устройства, источники, анализы). Это действие нельзя отменить. Продолжить?');">
+                    <button type="submit" class="btn btn-danger btn-sm">
+                        Удалить сеть
+                    </button>
+                </form>
+            </div>
         </div>
         <div class="card-body">
             <p>{{ network_info.network.description or 'Нет описания' }}</p>
             
+            <!-- Общая статистика -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h3>{{ network_info.stats.total_devices }}</h3>
+                            <p class="text-muted">Устройств</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h3>{{ network_info.stats.total_data_sources }}</h3>
+                            <p class="text-muted">Источников</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h3>{{ network_info.stats.total_analyses }}</h3>
+                            <p class="text-muted">Анализов</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h3>{{ network_info.stats.total_connections }}</h3>
+                            <p class="text-muted">Связей</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="row mt-4">
+                <!-- Устройства -->
                 <div class="col-md-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h5>Устройства ({{ network_info.stats.total_devices }})</h5>
                         </div>
                         <div class="card-body">
                             {% if network_info.devices %}
-                                <div class="table-responsive">
+                                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                     <table class="table table-sm">
                                         <thead>
                                             <tr>
                                                 <th>Имя</th>
                                                 <th>Тип</th>
                                                 <th>Статус</th>
+                                                <th>Связи</th>
+                                                <th>Действия</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {% for device in network_info.devices %}
                                             <tr>
-                                                <td>{{ device.device_name }}</td>
+                                                <td>{{ device.name }}</td>
                                                 <td><span class="badge bg-info">{{ device.type }}</span></td>
                                                 <td><span class="badge bg-{{ 'success' if device.status == 'active' else 'secondary' }}">{{ device.status }}</span></td>
+                                                <td><span class="badge bg-light text-dark">{{ device.connections_count }}</span></td>
+                                                <td>
+                                                    <form method="POST" action="{{ url_for('manage_device', device_id=device.id) }}" 
+                                                          class="d-inline" onsubmit="return confirm('Удалить устройство \"{{ device.name }}\"?');">
+                                                        <input type="hidden" name="action" value="delete">
+                                                        <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить устройство">
+                                                            🗑️
+                                                        </button>
+                                                    </form>
+                                                </td>
                                             </tr>
                                             {% endfor %}
                                         </tbody>
@@ -57,29 +119,44 @@
                     </div>
                 </div>
                 
+                <!-- Действия и анализы -->
                 <div class="col-md-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h5>Действия</h5>
                         </div>
                         <div class="card-body">
-                            <div class="d-grid gap-2">
+                            <div class="d-grid gap-2 mb-3">
                                 <a href="{{ url_for('load_data', network_id=network_info.network.id) }}" 
                                    class="btn btn-primary">
-                                    📥 Загрузить данные IoT
+                                    Загрузить данные IoT
                                 </a>
                                 <a href="{{ url_for('analyze_network', network_id=network_info.network.id) }}" 
                                    class="btn btn-success">
-                                    🔍 Анализировать топологию
+                                    Анализировать топологию
                                 </a>
+                                {% if network_info.data_sources %}
+                                <a href="#sources-section" 
+                                   class="btn btn-info">
+                                    Показать источники
+                                </a>
+                                {% endif %}
                             </div>
                             
                             {% if network_info.analyses %}
                             <hr>
                             <h6>Последние анализы:</h6>
                             {% for analysis in network_info.analyses %}
-                            <div class="alert alert-light">
-                                <small>{{ analysis.date }} - Центральность: {{ analysis.centrality_score }}</small>
+                            <div class="alert alert-light mb-2">
+                                <small>
+                                    <strong>{{ analysis.date[:10] }}</strong><br>
+                                    Центральность: {{ "%.4f"|format(analysis.centrality_score) }}<br>
+                                    {% if analysis.has_issues %}
+                                        <span class="text-warning">Есть проблемы</span>
+                                    {% else %}
+                                        <span class="text-success">Без проблем</span>
+                                    {% endif %}
+                                </small>
                             </div>
                             {% endfor %}
                             {% endif %}
@@ -87,6 +164,108 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Источники данных (показывается только если они есть) -->
+            {% if network_info.data_sources %}
+            <div class="row mt-4" id="sources-section">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Источники данных ({{ network_info.stats.total_data_sources }})</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Название</th>
+                                            <th>Тип</th>
+                                            <th>Последнее обновление</th>
+                                            <th>Статус</th>
+                                            <th>Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for source in network_info.data_sources %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ source.name }}</strong>
+                                                <br>
+                                                <small class="text-muted">ID: {{ source.id }}</small>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-{{ 
+                                                    'primary' if source.type == 'api' 
+                                                    else 'info' if source.type == 'database' 
+                                                    else 'success' if source.type == 'stream' 
+                                                    else 'warning' if source.type == 'file'
+                                                    else 'secondary' 
+                                                }}">
+                                                    {{ source.type|upper }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <small>{{ source.last_update[:16] }}</small>
+                                                <br>
+                                                <small class="text-muted">
+                                                    {% set hours_diff = 0 %}
+                                                    {% if source.last_update %}
+                                                        {% set source_time = source.last_update|to_datetime %}
+                                                        {% set hours_diff = (now() - source_time).total_seconds() / 3600 %}
+                                                    {% endif %}
+                                                    {{ "%.1f"|format(hours_diff) }} часов назад
+                                                </small>
+                                            </td>
+                                            <td>
+                                                {% set hours_diff = 0 %}
+                                                {% if source.last_update %}
+                                                    {% set source_time = source.last_update|to_datetime %}
+                                                    {% set hours_diff = (now() - source_time).total_seconds() / 3600 %}
+                                                {% endif %}
+                                                {% if hours_diff > 24 %}
+                                                    <span class="badge bg-warning">Требует обновления</span>
+                                                {% else %}
+                                                    <span class="badge bg-success">Актуальный</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <form method="POST" action="{{ url_for('manage_source', source_id=source.id) }}" 
+                                                      class="d-inline" onsubmit="return confirm('Обновить время источника \"{{ source.name }}\"?');">
+                                                    <input type="hidden" name="action" value="update">
+                                                    <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" title="Обновить время">
+                                                        🔄
+                                                    </button>
+                                                </form>
+                                                <form method="POST" action="{{ url_for('manage_source', source_id=source.id) }}" 
+                                                      class="d-inline" onsubmit="return confirm('Удалить источник \"{{ source.name }}\"?');">
+                                                    <input type="hidden" name="action" value="delete">
+                                                    <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Удалить источник">
+                                                        🗑️
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="alert alert-info mt-3">
+                                <h6>Информация о источниках:</h6>
+                                <ul class="mb-0">
+                                    <li><strong>API</strong> - внешние REST API интерфейсы</li>
+                                    <li><strong>database</strong> - базы данных (SQL/NoSQL)</li>
+                                    <li><strong>stream</strong> - потоковые данные (MQTT, Kafka)</li>
+                                    <li><strong>file</strong> - файловые источники (CSV, JSON)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
     
@@ -100,12 +279,25 @@
             <div class="col-md-6 mb-3">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">{{ network.network_name }}</h5>
-                        <p class="card-text text-muted">{{ network.description or 'Нет описания' }}</p>
-                        <p class="card-text">
-                            <small class="text-muted">Создано: {{ network.created_at[:10] }}</small>
-                        </p>
-                        <div class="d-flex justify-content-between">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h5 class="card-title">{{ network.name }}</h5>
+                                <p class="card-text text-muted">{{ network.description or 'Нет описания' }}</p>
+                                <p class="card-text">
+                                    <small class="text-muted">Создано: {{ network.created_at[:10] if network.created_at else 'Неизвестно' }}</small>
+                                </p>
+                            </div>
+                            <div>
+                                <form method="POST" action="{{ url_for('delete_network', network_id=network.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('Удалить сеть \"{{ network.name }}\"? Все данные будут потеряны.');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" title="Удалить сеть">
+                                        🗑️
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-3">
                             <a href="{{ url_for('network_details', network_id=network.id) }}" 
                                class="btn btn-sm btn-outline-primary">
                                 Подробнее
@@ -160,4 +352,39 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Функция для расчета разницы во времени
+function timeSince(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    
+    let interval = seconds / 3600;
+    
+    if (interval > 1) {
+        return Math.floor(interval) + " часов назад";
+    }
+    
+    interval = seconds / 60;
+    if (interval > 1) {
+        return Math.floor(interval) + " минут назад";
+    }
+    
+    return Math.floor(seconds) + " секунд назад";
+}
+
+// Обновляем время в таблице источников
+document.addEventListener('DOMContentLoaded', function() {
+    const timeCells = document.querySelectorAll('.time-since');
+    timeCells.forEach(cell => {
+        const dateString = cell.getAttribute('data-time');
+        if (dateString) {
+            cell.textContent = timeSince(dateString);
+        }
+    });
+});
+</script>
 {% endblock %}

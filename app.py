@@ -2,15 +2,33 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 from typing import List, Tuple
-import json
-from application import IoTNetworkService
+from application_service import IoTNetworkApplicationService
 
 app = Flask(__name__)
 app.secret_key = 'iot-network-analysis-secret-key'
 app.config['SESSION_TYPE'] = 'filesystem'
 
-# Инициализация сервиса
-iot_service = IoTNetworkService()
+iot_service = IoTNetworkApplicationService()
+
+@app.template_filter('to_datetime')
+def to_datetime_filter(value):
+    """Конвертировать строку в datetime"""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except:
+            try:
+                return datetime.strptime(value[:19], '%Y-%m-%d %H:%M:%S')
+            except:
+                return datetime.now()
+    return value
+
+@app.context_processor
+def utility_processor():
+    """Добавить утилиты в контекст шаблонов"""
+    def now():
+        return datetime.now()
+    return dict(now=now)
 
 @app.route('/')
 def index():
@@ -28,10 +46,10 @@ def login():
     user = iot_service.authenticate_user(login, password)
     
     if user:
-        session['user_id'] = user['id']
-        session['user_name'] = user['name']
-        session['user_role'] = user['role']
-        flash(f'Добро пожаловать, {user["name"]}!', 'success')
+        session['user_id'] = user.id
+        session['user_name'] = user.name
+        session['user_role'] = user.role.value
+        flash(f'Добро пожаловать, {user.name}!', 'success')
         return redirect(url_for('dashboard'))
     else:
         flash('Неверный логин или пароль', 'error')
@@ -49,9 +67,8 @@ def dashboard():
     """Панель управления"""
     if 'user_id' not in session:
         return redirect(url_for('index'))
-    
-    # Получить сети пользователя
-    networks = iot_service.get_all_networks(session['user_id'])
+
+    networks = iot_service.get_user_networks(session['user_id'])
     
     return render_template('network_info.html', 
                          networks=networks,
@@ -67,8 +84,12 @@ def create_network():
     description = request.form.get('description', '')
     
     if name:
-        iot_service.create_network(name, description, session['user_id'])
-        flash(f'Сеть "{name}" успешно создана', 'success')
+        result = iot_service.create_network(name, description, session['user_id'])
+        
+        if result['success']:
+            flash(f'Сеть "{name}" успешно создана', 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
     
     return redirect(url_for('dashboard'))
 
@@ -94,49 +115,21 @@ def load_data(network_id):
     if 'user_id' not in session:
         return redirect(url_for('index'))
     
+    network_info = iot_service.get_network_details(network_id)
+
+    if not network_info or 'network' not in network_info or not network_info['network'] or 'id' not in network_info['network']:
+        flash('Сеть не найдена', 'error')
+        return redirect(url_for('dashboard'))
+    
     if request.method == 'POST':
-        # Получение данных из формы
-        devices_data = []
-        connections_data = []
-        data_sources_data = []
+        action = request.form.get('action')
         
-        try:
-            # Пример данных устройств (в реальном приложении будет загрузка файла)
-            sample_devices = [
-                {'original_id': 101, 'name': 'Температурный датчик', 'type': 'sensor', 'status': 'active'},
-                {'original_id': 102, 'name': 'Датчик влажности', 'type': 'sensor', 'status': 'active'},
-                {'original_id': 103, 'name': 'Умный светильник', 'type': 'actuator', 'status': 'active'},
-                {'original_id': 104, 'name': 'Кондиционер', 'type': 'actuator', 'status': 'active'},
-                {'original_id': 105, 'name': 'Шлюз Zigbee', 'type': 'gateway', 'status': 'active'},
-                {'original_id': 106, 'name': 'Датчик движения', 'type': 'sensor', 'status': 'inactive'}
-            ]
+        if action == 'load_sample':
+            dataset_name = request.form.get('dataset')
             
-            # Пример связей
-            sample_connections: List[Tuple[int, int]] = [
-                (101, 105), (102, 105), (105, 103), (105, 104),
-                (101, 104), (101, 104), (103, 104), (106, 105)
-            ]
-            
-            # Пример источников данных
-            sample_data_sources = [
-                {
-                    'name': 'Home Assistant API',
-                    'type': 'api',
-                    'last_update': (datetime.now() - timedelta(hours=2)).isoformat()
-                },
-                {
-                    'name': 'MQTT Broker',
-                    'type': 'stream',
-                    'last_update': datetime.now().isoformat()
-                }
-            ]
-            
-            # Вызов прецедента загрузки данных
             result = iot_service.load_iot_data(
                 network_id=network_id,
-                devices_data=sample_devices,
-                connections_data=sample_connections,
-                data_sources_data=sample_data_sources
+                dataset_name=dataset_name
             )
             
             if result['success']:
@@ -145,16 +138,116 @@ def load_data(network_id):
                 flash(f'Ошибка загрузки: {result["error"]}', 'error')
             
             return redirect(url_for('network_details', network_id=network_id))
+        
+        elif action == 'add_device':
+            device_name = request.form.get('device_name')
+            device_type = request.form.get('device_type')
+            device_status = request.form.get('device_status', 'active')
             
-        except Exception as e:
-            flash(f'Ошибка: {str(e)}', 'error')
-    
-    # Получить информацию о сети для отображения
-    network_info = iot_service.get_network_details(network_id)
+            if device_name and device_type:
+                device_data = {
+                    'name': device_name,
+                    'type': device_type,
+                    'status': device_status,
+                    'connections': []
+                }
+                
+                result = iot_service.add_device(network_id, device_data)
+                
+                if result['success']:
+                    flash(result['message'], 'success')
+                else:
+                    flash(f'Ошибка: {result["error"]}', 'error')
+            
+            return redirect(url_for('load_data', network_id=network_id))
+        
+        elif action == 'add_source':
+            source_name = request.form.get('source_name')
+            source_type = request.form.get('source_type')
+            
+            if source_name and source_type:
+                source_data = {
+                    'name': source_name,
+                    'type': source_type,
+                    'last_update': datetime.now().isoformat()
+                }
+                
+                result = iot_service.add_data_source(network_id, source_data)
+                
+                if result['success']:
+                    flash(result['message'], 'success')
+                else:
+                    flash(f'Ошибка: {result["error"]}', 'error')
+            
+            return redirect(url_for('load_data', network_id=network_id))
+
+    datasets = iot_service.get_sample_datasets()
+
+    if datasets is None:
+        datasets = {}
     
     return render_template('load_data.html',
                          network_info=network_info,
+                         datasets=datasets,
                          user_role=session.get('user_role'))
+
+@app.route('/manage_device/<int:device_id>', methods=['POST'])
+def manage_device(device_id):
+    """Управление устройством (удаление)"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    action = request.form.get('action')
+    
+    if action == 'delete':
+        result = iot_service.remove_device(device_id)
+        
+        if result['success']:
+            flash(result['message'], 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
+
+    network_info = iot_service.get_network_details(
+        request.form.get('network_id', type=int)
+    )
+    
+    if network_info:
+        return redirect(url_for('network_details', network_id=network_info['network']['id']))
+    
+    return redirect(url_for('dashboard'))
+
+@app.route('/manage_source/<int:source_id>', methods=['POST'])
+def manage_source(source_id):
+    """Управление источником данных"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    action = request.form.get('action')
+    
+    if action == 'delete':
+        result = iot_service.remove_data_source(source_id)
+        
+        if result['success']:
+            flash(result['message'], 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
+    
+    elif action == 'update':
+        result = iot_service.update_data_source(source_id)
+        
+        if result['success']:
+            flash(result['message'], 'success')
+        else:
+            flash(f'Ошибка: {result["error"]}', 'error')
+
+    network_info = iot_service.get_network_details(
+        request.form.get('network_id', type=int)
+    )
+    
+    if network_info:
+        return redirect(url_for('network_details', network_id=network_info['network']['id']))
+    
+    return redirect(url_for('dashboard'))
 
 @app.route('/analyze/<int:network_id>', methods=['GET', 'POST'])
 def analyze_network(network_id):
@@ -165,7 +258,7 @@ def analyze_network(network_id):
     network_info = iot_service.get_network_details(network_id)
     
     if request.method == 'POST':
-        # Вызов прецедента анализа
+
         result = iot_service.analyze_topology_and_connections(network_id)
         
         if result['success']:
@@ -203,5 +296,27 @@ def get_sample_data():
     }
     return jsonify(sample_data)
 
+@app.route('/delete_network/<int:network_id>', methods=['POST'])
+def delete_network(network_id):
+    """Удалить сеть"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+
+    networks = iot_service.get_user_networks(session['user_id'])
+    network_exists = any(network['id'] == network_id for network in networks)
+    
+    if not network_exists:
+        flash('Сеть не найдена или у вас нет прав для ее удаления', 'error')
+        return redirect(url_for('dashboard'))
+    
+    result = iot_service.delete_network(network_id)
+    
+    if result['success']:
+        flash(result['message'], 'success')
+    else:
+        flash(f'Ошибка: {result["error"]}', 'error')
+    
+    return redirect(url_for('dashboard'))
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')

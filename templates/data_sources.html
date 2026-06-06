@@ -1,0 +1,175 @@
+<!-- templates/data_sources.html -->
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>Источники данных</h2>
+        <p class="text-muted">Управление источниками данных для сети: {{ network_info.network.name }}</p>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('network_details', network_id=network_info.network.id) }}" 
+           class="btn btn-secondary">
+            ← Назад к сети
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>Список источников данных</h4>
+            </div>
+            <div class="card-body">
+                {% if sources_info %}
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Тип</th>
+                                    <th>Последнее обновление</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for source in sources_info %}
+                                <tr class="{% if source.needs_update %}table-warning{% endif %}">
+                                    <td>
+                                        <strong>{{ source.name }}</strong>
+                                        <br>
+                                        <small class="text-muted">ID: {{ source.id }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'primary' if source.type == 'api' else 'info' if source.type == 'database' else 'success' if source.type == 'stream' else 'secondary' }}">
+                                            {{ source.type|upper }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {{ source.last_update[:16] }}
+                                        <br>
+                                        <small class="text-muted">{{ source.hours_since_update }} часов назад</small>
+                                    </td>
+                                    <td>
+                                        {% if source.needs_update %}
+                                            <span class="badge bg-warning">Требует обновления</span>
+                                        {% else %}
+                                            <span class="badge bg-success">Актуальный</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary">
+                                            Обновить
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger">
+                                            Удалить
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <h5>Источники данных не найдены</h5>
+                        <p>Добавьте источники данных для загрузки информации об устройствах IoT.</p>
+                        <a href="{{ url_for('load_data', network_id=network_info.network.id) }}" 
+                           class="btn btn-primary">
+                            Загрузить данные из источников
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>Типы источников данных</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3>API</h3>
+                                <p class="text-muted">Внешние REST API</p>
+                                <span class="badge bg-primary">HTTP/HTTPS</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3>Базы данных</h3>
+                                <p class="text-muted">SQL/NoSQL БД</p>
+                                <span class="badge bg-info">MySQL, PostgreSQL</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3>Потоки</h3>
+                                <p class="text-muted">Потоковые данные</p>
+                                <span class="badge bg-success">MQTT, Kafka</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Статистика источников</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6>Всего источников:</h6>
+                    <h3>{{ sources_info|length }}</h3>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>По типам:</h6>
+                    <ul class="list-unstyled">
+                        {% set types = {} %}
+                        {% for source in sources_info %}
+                            {% set _ = types.update({source.type: types.get(source.type, 0) + 1}) %}
+                        {% endfor %}
+                        {% for type, count in types.items() %}
+                        <li>{{ type|upper }}: {{ count }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>Требуют обновления:</h6>
+                    <h4 class="{{ 'text-danger' if sources_info|selectattr('needs_update')|list|length > 0 else 'text-success' }}">
+                        {{ sources_info|selectattr('needs_update')|list|length }}
+                    </h4>
+                </div>
+                
+                <hr>
+                
+                <div class="alert alert-light">
+                    <h6>Информация:</h6>
+                    <p class="small">
+                        Источники данных обновляются автоматически или вручную.
+                        Рекомендуется обновлять данные не реже чем раз в 24 часа.
+                    </p>
+                </div>
+                
+                <a href="{{ url_for('load_data', network_id=network_info.network.id) }}" 
+                   class="btn btn-primary w-100">
+                    Добавить новые данные
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

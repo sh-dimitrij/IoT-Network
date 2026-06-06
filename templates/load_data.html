@@ -1,10 +1,11 @@
+<!-- templates/load_data.html -->
 {% extends "layout.html" %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
-        <h2>📥 Загрузка данных IoT</h2>
-        <p class="text-muted">Загрузите данные об устройствах и их связях</p>
+        <h2>Загрузка данных IoT</h2>
+        <p class="text-muted">Загрузите данные об устройствах и их связях для сети: {{ network_info.network.name }}</p>
     </div>
     <div class="col-auto">
         <a href="{{ url_for('network_details', network_id=network_info.network.id) }}" 
@@ -16,58 +17,135 @@
 
 <div class="row">
     <div class="col-md-8">
-        <div class="card">
+        <!-- Выбор набора данных -->
+        <div class="card mb-4">
             <div class="card-header">
-                <h4>Загрузка данных в сеть: {{ network_info.network.network_name }}</h4>
+                <h4>Загрузить примерные данные</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" onsubmit="return confirm('Внимание! При загрузке нового набора данных все существующие устройства и источники в этой сети будут удалены. Продолжить?');">
+                    <input type="hidden" name="action" value="load_sample">
+                    
+                    <div class="row">
+                        {% for dataset_key, dataset in datasets.items() %}
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">{{ dataset.name }}</h5>
+                                    <p class="card-text small">{{ dataset.description }}</p>
+                                    <ul class="small text-muted">
+                                        <li>Устройств: {{ dataset.devices|length }}</li>
+                                        <li>Связей: {{ dataset.connections|length }}</li>
+                                        <li>Источников: {{ dataset.data_sources|length }}</li>
+                                    </ul>
+                                    <button type="submit" name="dataset" value="{{ dataset_key }}" 
+                                            class="btn btn-primary btn-sm">
+                                        Загрузить этот набор
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Ручное добавление устройства -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Добавить устройство вручную</h4>
             </div>
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="action" value="add_device">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="device_name" class="form-label">Название устройства *</label>
+                                <input type="text" class="form-control" id="device_name" name="device_name" required>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="device_type" class="form-label">Тип *</label>
+                                <select class="form-select" id="device_type" name="device_type" required>
+                                    <option value="sensor">Датчик (sensor)</option>
+                                    <option value="actuator">Исполнительное (actuator)</option>
+                                    <option value="gateway">Шлюз (gateway)</option>
+                                    <option value="controller">Контроллер (controller)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="device_status" class="form-label">Статус</label>
+                                <select class="form-select" id="device_status" name="device_status">
+                                    <option value="active">Активный</option>
+                                    <option value="inactive">Неактивный</option>
+                                    <option value="maintenance">На обслуживании</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="alert alert-info">
-                        <h6>Пример загружаемых данных:</h6>
-                        <p>Система загрузит тестовые данные для демонстрации работы прецедента.</p>
-                        <ul>
-                            <li>6 IoT устройств разных типов</li>
-                            <li>8 связей между устройствами</li>
-                            <li>2 источника данных</li>
-                        </ul>
+                        <small>
+                            <strong>Примечание:</strong> После добавления устройства вы можете добавить связи между 
+                            устройствами на странице управления сетью.
+                        </small>
                     </div>
                     
-                    <div class="mb-3">
-                        <h5>Пример устройств:</h5>
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Имя</th>
-                                        <th>Тип</th>
-                                        <th>Статус</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr><td>101</td><td>Температурный датчик</td><td>sensor</td><td>active</td></tr>
-                                    <tr><td>102</td><td>Датчик влажности</td><td>sensor</td><td>active</td></tr>
-                                    <tr><td>103</td><td>Умный светильник</td><td>actuator</td><td>active</td></tr>
-                                    <tr><td>104</td><td>Кондиционер</td><td>actuator</td><td>active</td></tr>
-                                    <tr><td>105</td><td>Шлюз Zigbee</td><td>gateway</td><td>active</td></tr>
-                                    <tr><td>106</td><td>Датчик движения</td><td>sensor</td><td>inactive</td></tr>
-                                </tbody>
-                            </table>
+                    <button type="submit" class="btn btn-success">
+                        Добавить устройство
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Добавление источника данных -->
+        <div class="card">
+            <div class="card-header">
+                <h4>Добавить источник данных</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="add_source">
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="source_name" class="form-label">Название источника *</label>
+                                <input type="text" class="form-control" id="source_name" name="source_name" 
+                                       placeholder="Например: Weather API, MQTT Broker, Database" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="source_type" class="form-label">Тип *</label>
+                                <select class="form-select" id="source_type" name="source_type" required>
+                                    <option value="api">API</option>
+                                    <option value="database">База данных</option>
+                                    <option value="stream">Поток данных</option>
+                                    <option value="file">Файл</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <h5>Пример связей:</h5>
-                        <div class="alert alert-light">
-                            <code>
-                                (101→105), (102→105), (105→103), (105→104),<br>
-                                (101→104), (101→104) - дубликат, (103→104), (106→105)
-                            </code>
-                        </div>
+                    <div class="alert alert-light">
+                        <small>
+                            <strong>Типы источников:</strong><br>
+                            • <strong>API</strong> - внешние REST API интерфейсы<br>
+                            • <strong>База данных</strong> - SQL/NoSQL базы данных<br>
+                            • <strong>Поток данных</strong> - MQTT, Kafka, WebSocket<br>
+                            • <strong>Файл</strong> - CSV, JSON, XML файлы
+                        </small>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary btn-lg">
-                        📤 Загрузить тестовые данные
+                    <button type="submit" class="btn btn-info">
+                        Добавить источник данных
                     </button>
                 </form>
             </div>
@@ -75,24 +153,104 @@
     </div>
     
     <div class="col-md-4">
-        <div class="card">
+        <!-- Информация о сети -->
+        <div class="card mb-4">
             <div class="card-header">
                 <h5>Информация о сети</h5>
             </div>
             <div class="card-body">
-                <p><strong>Название:</strong> {{ network_info.network.network_name }}</p>
+                <p><strong>Название:</strong> {{ network_info.network.name }}</p>
                 <p><strong>Устройств:</strong> {{ network_info.stats.total_devices }}</p>
+                <p><strong>Источников:</strong> {{ network_info.stats.total_data_sources }}</p>
                 <p><strong>Связей:</strong> {{ network_info.stats.total_connections }}</p>
-                <p><strong>Источников данных:</strong> {{ network_info.stats.total_data_sources }}</p>
                 <hr>
-                <h6>После загрузки:</h6>
+                <h6>Рекомендации:</h6>
                 <ul class="small">
-                    <li>Данные будут сохранены в БД через Row Data Gateway</li>
-                    <li>Связи будут проверены на валидность</li>
-                    <li>Созданные устройства можно будет анализировать</li>
+                    <li>Начните с загрузки примерного набора данных</li>
+                    <li>Добавляйте устройства вручную при необходимости</li>
+                    <li>Указывайте источники данных для каждого устройства</li>
+                    <li>После загрузки данных проведите анализ топологии</li>
                 </ul>
             </div>
         </div>
+        
+        <!-- Текущие устройства -->
+        <div class="card">
+            <div class="card-header">
+                <h5>Текущие устройства ({{ network_info.devices|length }})</h5>
+            </div>
+            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                {% if network_info.devices %}
+                    <div class="list-group">
+                        {% for device in network_info.devices %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ device.name }}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        <span class="badge bg-info">{{ device.type }}</span>
+                                        <span class="badge bg-{{ 'success' if device.status == 'active' else 'secondary' }}">
+                                            {{ device.status }}
+                                        </span>
+                                    </small>
+                                </div>
+                                <div>
+                                    <form method="POST" action="{{ url_for('manage_device', device_id=device.id) }}" 
+                                          class="d-inline" onsubmit="return confirm('Удалить устройство?');">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            🗑️
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">Нет устройств</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Текущие источники -->
+        {% if network_info.data_sources %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Текущие источники ({{ network_info.data_sources|length }})</h5>
+            </div>
+            <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                <div class="list-group">
+                    {% for source in network_info.data_sources %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <small><strong>{{ source.name }}</strong></small>
+                                <br>
+                                <small class="text-muted">
+                                    <span class="badge bg-info">{{ source.type }}</span>
+                                    {{ source.last_update[:16] }}
+                                </small>
+                            </div>
+                            <div>
+                                <form method="POST" action="{{ url_for('manage_source', source_id=source.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('Удалить источник?');">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="network_id" value="{{ network_info.network.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        🗑️
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
