@@ -3,3 +3,8 @@ env/
 __pycache__/
 .DS_Store
 node_modules
+.vscode/
+Подпись2.png
+merge_files.py
+merge.txt
+.pytest_cache/

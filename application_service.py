@@ -613,6 +613,13 @@ class IoTNetworkApplicationService:
     
     def create_network(self, name: str, description: str = "", user_id: Optional[int] = None) -> Dict[str, Any]:
         """Создать новую IoT сеть (с использованием Gateway)"""
+        # В начало метода, перед созданием IoTNetwork:
+        if not name or not isinstance(name, str) or name.strip() == '':
+            return {'success': False, 'error': 'Имя сети не может быть пустым'}
+        if len(name) > 255:
+            return {'success': False, 'error': 'Имя сети не может превышать 255 символов'}
+        if user_id is None or not isinstance(user_id, int) or user_id <= 0:
+            return {'success': False, 'error': 'user_id должен быть целым положительным числом'}
         try:
 
             network = IoTNetwork(
